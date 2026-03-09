@@ -1,0 +1,26 @@
+import { requireTeacher } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import StudentManager from './StudentManager'
+
+export default async function StudentsPage() {
+  await requireTeacher()
+  
+  const students = await prisma.user.findMany({
+    where: { role: 'STUDENT' },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      createdAt: true,
+      _count: { select: { submissions: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">学生管理</h1>
+      <StudentManager students={JSON.parse(JSON.stringify(students))} />
+    </div>
+  )
+}

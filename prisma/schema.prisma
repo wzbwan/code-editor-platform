@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("STUDENT")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  submissions Submission[]
+  assignments Assignment[] @relation("TeacherAssignments")
+}
+
+model Assignment {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  teacherId   String
+  teacher     User     @relation("TeacherAssignments", fields: [teacherId], references: [id])
+  submissions Submission[]
+}
+
+model Submission {
+  id           String   @id @default(cuid())
+  code         String
+  score        Int?
+  feedback     String?
+  submittedAt  DateTime @default(now())
+  reviewedAt   DateTime?
+  
+  studentId     String
+  student       User     @relation(fields: [studentId], references: [id])
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  
+  @@unique([studentId, assignmentId])
+}
