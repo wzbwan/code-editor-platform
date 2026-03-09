@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 interface Student {
   id: string
@@ -14,11 +14,26 @@ interface Props {
   students: Student[]
 }
 
+interface SkippedRow {
+  rowNumber: number
+  username: string
+  reason: string
+}
+
+interface ImportResult {
+  createdCount: number
+  skippedCount: number
+  skippedRows: SkippedRow[]
+}
+
 export default function StudentManager({ students: initialStudents }: Props) {
   const [students, setStudents] = useState(initialStudents)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ username: '', password: '', name: '' })
   const [loading, setLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,9 +48,10 @@ export default function StudentManager({ students: initialStudents }: Props) {
 
       if (res.ok) {
         const data = await res.json()
-        setStudents([{ ...data, _count: { submissions: 0 } }, ...students])
+        setStudents((current) => [{ ...data, _count: { submissions: 0 } }, ...current])
         setForm({ username: '', password: '', name: '' })
         setShowForm(false)
+        setImportResult(null)
       } else {
         const error = await res.json()
         alert(error.error || '创建失败')
@@ -50,19 +66,89 @@ export default function StudentManager({ students: initialStudents }: Props) {
 
     const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
     if (res.ok) {
-      setStudents(students.filter(s => s.id !== id))
+      setStudents((current) => current.filter((student) => student.id !== id))
+    }
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    setImporting(true)
+    setImportResult(null)
+
+    try {
+      const body = new FormData()
+      body.append('file', file)
+
+      const res = await fetch('/api/users/import', {
+        method: 'POST',
+        body,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '导入失败')
+        if (data.skippedRows) {
+          setImportResult({
+            createdCount: 0,
+            skippedCount: data.skippedRows.length,
+            skippedRows: data.skippedRows,
+          })
+        }
+        return
+      }
+
+      const createdStudents = (data.createdStudents as Omit<Student, '_count'>[]).map(
+        (student) => ({
+          ...student,
+          _count: { submissions: 0 },
+        })
+      )
+
+      if (createdStudents.length > 0) {
+        setStudents((current) => [...createdStudents, ...current])
+      }
+
+      setImportResult({
+        createdCount: data.createdCount,
+        skippedCount: data.skippedCount,
+        skippedRows: data.skippedRows,
+      })
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <button
           onClick={() => setShowForm(!showForm)}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
           {showForm ? '取消' : '添加学生'}
         </button>
+        <label className="cursor-pointer bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+          {importing ? '导入中...' : 'Excel批量导入'}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleImport}
+            disabled={importing}
+          />
+        </label>
+        <span className="text-sm text-gray-500">
+          首行需包含：姓名 / 用户名 / 密码
+        </span>
       </div>
 
       {showForm && (
@@ -108,6 +194,29 @@ export default function StudentManager({ students: initialStudents }: Props) {
             {loading ? '创建中...' : '创建'}
           </button>
         </form>
+      )}
+
+      {importResult && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-green-700">成功导入 {importResult.createdCount} 条</span>
+            <span className="text-amber-700">跳过 {importResult.skippedCount} 条</span>
+          </div>
+          {importResult.skippedRows.length > 0 && (
+            <div className="mt-3 space-y-1 text-sm text-gray-600">
+              {importResult.skippedRows.slice(0, 10).map((row) => (
+                <p key={`${row.rowNumber}-${row.username}`}>
+                  第 {row.rowNumber} 行
+                  {row.username ? `（${row.username}）` : ''}
+                  ：{row.reason}
+                </p>
+              ))}
+              {importResult.skippedRows.length > 10 && (
+                <p>其余 {importResult.skippedRows.length - 10} 条跳过记录未展开显示。</p>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {students.length === 0 ? (

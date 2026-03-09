@@ -21,7 +21,8 @@
     "prism-react-renderer": "^2.3.1",
     "react": "^18",
     "react-dom": "^18",
-    "react-simple-code-editor": "^0.13.1"
+    "react-simple-code-editor": "^0.13.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

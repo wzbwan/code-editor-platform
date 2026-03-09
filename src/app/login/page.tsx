@@ -73,11 +73,11 @@ export default function LoginPage() {
             注册
           </Link>
         </p>
-        <div className="mt-6 p-4 bg-gray-50 rounded text-sm text-gray-600">
-          <p className="font-medium mb-2">测试账号：</p>
-          <p>教师: teacher / 123456</p>
-          <p>学生: student1 / 123456</p>
-        </div>
+        {/* <div className="mt-6 p-4 bg-gray-50 rounded text-sm text-gray-600"> */}
+          {/* <p className="font-medium mb-2">测试账号：</p> */}
+          {/* <p>教师: teacher / 123456</p>
+          <p>学生: student1 / 123456</p> */}
+        {/* </div> */}
       </form>
     </div>
   )

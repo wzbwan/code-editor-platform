@@ -1,10 +1,18 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 
 export default function Navbar() {
   const { data: session } = useSession()
+  const router = useRouter()
+
+  const handleSignOut = async () => {
+    await signOut({ redirect: false })
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <nav className="bg-gray-800 text-white px-6 py-4">
@@ -28,7 +36,7 @@ export default function Navbar() {
                 <Link href="/student" className="hover:text-gray-300">我的作业</Link>
               )}
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={handleSignOut}
                 className="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-sm"
               >
                 退出
