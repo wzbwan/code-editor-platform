@@ -1,4 +1,5 @@
 import { requireStudent } from '@/lib/auth'
+import { ASSIGNMENT_STATUS } from '@/lib/constants'
 import { prisma } from '@/lib/prisma'
 import AssignmentList from './AssignmentList'
 
@@ -6,6 +7,9 @@ export default async function StudentPage() {
   const user = await requireStudent()
   
   const assignments = await prisma.assignment.findMany({
+    where: {
+      status: ASSIGNMENT_STATUS.ACTIVE,
+    },
     include: {
       _count: { select: { submissions: true } },
       submissions: { 

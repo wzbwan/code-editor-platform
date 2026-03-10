@@ -1,17 +1,24 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import {
+  buildStudentSearchIndex,
+  matchesStudentQuery,
+  type StudentSearchIndex,
+} from '@/lib/student-search'
 
 interface Student {
   id: string
   username: string
   name: string
+  pointBalance: number
   createdAt: string
   _count: { submissions: number }
 }
 
 interface Props {
   students: Student[]
+  recentPointRecords: PointRecord[]
 }
 
 interface SkippedRow {
@@ -26,14 +33,64 @@ interface ImportResult {
   skippedRows: SkippedRow[]
 }
 
-export default function StudentManager({ students: initialStudents }: Props) {
-  const [students, setStudents] = useState(initialStudents)
+interface PointRecord {
+  id: string
+  studentId: string
+  studentUsername: string
+  operatorLabel: string | null
+  delta: number
+  reason: string
+  occurredAt: string
+  source: string
+  createdAt: string
+  student: {
+    name: string
+    username: string
+  }
+  operator: {
+    name: string
+    username: string
+  } | null
+}
+
+interface StudentWithSearchIndex extends Student {
+  searchIndex: StudentSearchIndex
+}
+
+function sortStudentsByUsername(students: StudentWithSearchIndex[]) {
+  return [...students].sort((left, right) => left.username.localeCompare(right.username))
+}
+
+function enrichStudent(student: Student): StudentWithSearchIndex {
+  return {
+    ...student,
+    searchIndex: buildStudentSearchIndex(student),
+  }
+}
+
+function formatDelta(delta: number) {
+  return delta > 0 ? `+${delta}` : `${delta}`
+}
+
+export default function StudentManager({
+  students: initialStudents,
+  recentPointRecords: initialRecentPointRecords,
+}: Props) {
+  const [students, setStudents] = useState(() =>
+    sortStudentsByUsername(initialStudents.map(enrichStudent))
+  )
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ username: '', password: '', name: '' })
+  const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [pointLoadingId, setPointLoadingId] = useState<string | null>(null)
+  const [recentPointRecords, setRecentPointRecords] = useState(initialRecentPointRecords)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const filteredStudents = students.filter((student) =>
+    matchesStudentQuery(student, query)
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,7 +105,12 @@ export default function StudentManager({ students: initialStudents }: Props) {
 
       if (res.ok) {
         const data = await res.json()
-        setStudents((current) => [{ ...data, _count: { submissions: 0 } }, ...current])
+        setStudents((current) =>
+          sortStudentsByUsername([
+            ...current,
+            enrichStudent({ ...data, _count: { submissions: 0 } }),
+          ])
+        )
         setForm({ username: '', password: '', name: '' })
         setShowForm(false)
         setImportResult(null)
@@ -67,6 +129,9 @@ export default function StudentManager({ students: initialStudents }: Props) {
     const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
     if (res.ok) {
       setStudents((current) => current.filter((student) => student.id !== id))
+      setRecentPointRecords((current) =>
+        current.filter((record) => record.studentId !== id)
+      )
     }
   }
 
@@ -110,7 +175,12 @@ export default function StudentManager({ students: initialStudents }: Props) {
       )
 
       if (createdStudents.length > 0) {
-        setStudents((current) => [...createdStudents, ...current])
+        setStudents((current) =>
+          sortStudentsByUsername([
+            ...current,
+            ...createdStudents.map((student) => enrichStudent(student)),
+          ])
+        )
       }
 
       setImportResult({
@@ -124,6 +194,83 @@ export default function StudentManager({ students: initialStudents }: Props) {
         fileInputRef.current.value = ''
       }
     }
+  }
+
+  const submitPointChange = async (
+    student: StudentWithSearchIndex,
+    delta: number,
+    reason: string
+  ) => {
+    setPointLoadingId(student.id)
+
+    try {
+      const res = await fetch('/api/points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: student.id,
+          delta,
+          reason,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '积分操作失败')
+        return
+      }
+
+      setStudents((current) =>
+        current.map((item) =>
+          item.id === student.id
+            ? { ...item, pointBalance: data.student.pointBalance }
+            : item
+        )
+      )
+      setRecentPointRecords((current) => [data.record, ...current].slice(0, 20))
+    } finally {
+      setPointLoadingId(null)
+    }
+  }
+
+  const handleQuickPointAction = async (
+    student: StudentWithSearchIndex,
+    delta: number
+  ) => {
+    const actionText = delta > 0 ? `加 ${delta} 分` : `扣 ${Math.abs(delta)} 分`
+    const reason = window.prompt(
+      `给 ${student.name}（${student.username}）${actionText}，请输入理由：`
+    )
+
+    if (!reason?.trim()) {
+      return
+    }
+
+    await submitPointChange(student, delta, reason.trim())
+  }
+
+  const handleCustomPointAction = async (student: StudentWithSearchIndex) => {
+    const deltaInput = window.prompt(
+      `请输入 ${student.name}（${student.username}）的加减分值，正数为加分，负数为扣分：`
+    )
+
+    if (!deltaInput?.trim()) {
+      return
+    }
+
+    const delta = Number.parseInt(deltaInput.trim(), 10)
+    if (!Number.isInteger(delta) || delta === 0) {
+      alert('分值必须是非 0 整数')
+      return
+    }
+
+    const reason = window.prompt('请输入本次加分/扣分理由：')
+    if (!reason?.trim()) {
+      return
+    }
+
+    await submitPointChange(student, delta, reason.trim())
   }
 
   return (
@@ -149,6 +296,31 @@ export default function StudentManager({ students: initialStudents }: Props) {
         <span className="text-sm text-gray-500">
           首行需包含：姓名 / 用户名 / 密码
         </span>
+      </div>
+
+      <div className="mb-6 rounded-lg bg-white p-4 shadow">
+        <label className="mb-2 block text-sm font-medium text-gray-700">
+          快速检索
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="输入姓名、音序（如 zs）、用户名或学号后三位"
+            className="min-w-[280px] flex-1 rounded-lg border px-3 py-2"
+          />
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+          >
+            清空
+          </button>
+          <span className="text-sm text-gray-500">
+            当前结果 {filteredStudents.length} / {students.length}
+          </span>
+        </div>
       </div>
 
       {showForm && (
@@ -219,7 +391,7 @@ export default function StudentManager({ students: initialStudents }: Props) {
         </div>
       )}
 
-      {students.length === 0 ? (
+      {filteredStudents.length === 0 ? (
         <div className="text-center text-gray-500 py-12">暂无学生</div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -228,27 +400,69 @@ export default function StudentManager({ students: initialStudents }: Props) {
               <tr>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">姓名</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">用户名</th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">积分</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">提交数</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">创建时间</th>
                 <th className="px-6 py-3 text-right text-sm font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {students.map((student) => (
+              {filteredStudents.map((student) => (
                 <tr key={student.id}>
                   <td className="px-6 py-4">{student.name}</td>
                   <td className="px-6 py-4">{student.username}</td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-medium ${
+                        student.pointBalance >= 0
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}
+                    >
+                      {student.pointBalance}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">{student._count.submissions}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
                     {new Date(student.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleDelete(student.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      删除
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => handleQuickPointAction(student, 1)}
+                        disabled={pointLoadingId === student.id}
+                        className="rounded bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        +1
+                      </button>
+                      <button
+                        onClick={() => handleQuickPointAction(student, 2)}
+                        disabled={pointLoadingId === student.id}
+                        className="rounded bg-emerald-700 px-3 py-1 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
+                      >
+                        +2
+                      </button>
+                      <button
+                        onClick={() => handleQuickPointAction(student, -1)}
+                        disabled={pointLoadingId === student.id}
+                        className="rounded bg-amber-600 px-3 py-1 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        -1
+                      </button>
+                      <button
+                        onClick={() => handleCustomPointAction(student)}
+                        disabled={pointLoadingId === student.id}
+                        className="rounded bg-slate-600 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        自定义
+                      </button>
+                      <button
+                        onClick={() => handleDelete(student.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        删除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -256,6 +470,53 @@ export default function StudentManager({ students: initialStudents }: Props) {
           </table>
         </div>
       )}
+
+      <div className="mt-8 rounded-lg bg-white p-6 shadow">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">最近积分记录</h2>
+          <span className="text-sm text-gray-500">保留最近 20 条</span>
+        </div>
+        {recentPointRecords.length === 0 ? (
+          <div className="text-sm text-gray-500">暂无积分记录</div>
+        ) : (
+          <div className="space-y-3">
+            {recentPointRecords.map((record) => (
+              <div
+                key={record.id}
+                className="flex flex-col gap-2 rounded-lg border border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <div className="font-medium text-gray-900">
+                    {record.student.name}（{record.studentUsername}）
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+                        record.delta > 0
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}
+                    >
+                      {formatDelta(record.delta)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">{record.reason}</p>
+                </div>
+                <div className="text-sm text-gray-500">
+                  <div>
+                    {new Date(record.occurredAt).toLocaleString()}
+                  </div>
+                  <div>
+                    来源：
+                    {record.source === 'MOBILE_API' ? '手机接口' : '网页后台'}
+                    {record.operator?.name || record.operatorLabel
+                      ? ` / 操作人：${record.operator?.name || record.operatorLabel}`
+                      : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

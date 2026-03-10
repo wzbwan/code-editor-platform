@@ -13,11 +13,14 @@ model User {
   password  String
   name      String
   role      String   @default("STUDENT")
+  pointBalance Int   @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   submissions Submission[]
   assignments Assignment[] @relation("TeacherAssignments")
+  pointRecords StudentPointRecord[] @relation("StudentPointRecords")
+  operatedPointRecords StudentPointRecord[] @relation("OperatorPointRecords")
 }
 
 model Assignment {
@@ -25,6 +28,7 @@ model Assignment {
   title       String
   description String
   dueDate     DateTime?
+  status      String   @default("ACTIVE")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -47,4 +51,22 @@ model Submission {
   assignment    Assignment @relation(fields: [assignmentId], references: [id])
   
   @@unique([studentId, assignmentId])
+}
+
+model StudentPointRecord {
+  id              String   @id @default(cuid())
+  studentId       String
+  student         User     @relation("StudentPointRecords", fields: [studentId], references: [id], onDelete: Cascade)
+  studentUsername String
+  operatorId      String?
+  operator        User?    @relation("OperatorPointRecords", fields: [operatorId], references: [id], onDelete: SetNull)
+  operatorLabel   String?
+  delta           Int
+  reason          String
+  occurredAt      DateTime
+  source          String   @default("WEB")
+  createdAt       DateTime @default(now())
+
+  @@index([studentId, occurredAt])
+  @@index([occurredAt])
 }

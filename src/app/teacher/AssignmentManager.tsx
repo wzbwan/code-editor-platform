@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { ASSIGNMENT_STATUS } from '@/lib/constants'
 
 interface Assignment {
   id: string
   title: string
   description: string
   dueDate: string | null
+  status: string
   createdAt: string
   _count: { submissions: number }
 }
@@ -16,15 +18,33 @@ interface Props {
   assignments: Assignment[]
 }
 
+interface AssignmentForm {
+  title: string
+  description: string
+  dueDate: string
+  status: string
+}
+
 export default function AssignmentManager({ assignments: initialAssignments }: Props) {
   const [assignments, setAssignments] = useState(initialAssignments)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ title: '', description: '', dueDate: '' })
+  const [form, setForm] = useState<AssignmentForm>({
+    title: '',
+    description: '',
+    dueDate: '',
+    status: ASSIGNMENT_STATUS.ACTIVE,
+  })
   const [loading, setLoading] = useState(false)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
 
   const resetForm = () => {
-    setForm({ title: '', description: '', dueDate: '' })
+    setForm({
+      title: '',
+      description: '',
+      dueDate: '',
+      status: ASSIGNMENT_STATUS.ACTIVE,
+    })
     setEditingId(null)
     setShowForm(false)
   }
@@ -34,6 +54,7 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
       title: assignment.title,
       description: assignment.description,
       dueDate: assignment.dueDate ? assignment.dueDate.split('T')[0] : '',
+      status: assignment.status,
     })
     setEditingId(assignment.id)
     setShowForm(true)
@@ -59,11 +80,16 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
       if (res.ok) {
         const data = await res.json()
         if (editingId) {
-          setAssignments(assignments.map(a => 
-            a.id === editingId ? { ...a, ...data } : a
-          ))
+          setAssignments((current) =>
+            current.map((assignment) =>
+              assignment.id === editingId ? { ...assignment, ...data } : assignment
+            )
+          )
         } else {
-          setAssignments([{ ...data, _count: { submissions: 0 } }, ...assignments])
+          setAssignments((current) => [
+            { ...data, _count: { submissions: 0 } },
+            ...current,
+          ])
         }
         resetForm()
       }
@@ -77,7 +103,34 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
 
     const res = await fetch(`/api/assignments?id=${id}`, { method: 'DELETE' })
     if (res.ok) {
-      setAssignments(assignments.filter(a => a.id !== id))
+      setAssignments((current) => current.filter((assignment) => assignment.id !== id))
+    }
+  }
+
+  const handleToggleStatus = async (assignment: Assignment) => {
+    setTogglingId(assignment.id)
+
+    try {
+      const res = await fetch('/api/assignments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: assignment.id,
+          status:
+            assignment.status === ASSIGNMENT_STATUS.ACTIVE
+              ? ASSIGNMENT_STATUS.DISABLED
+              : ASSIGNMENT_STATUS.ACTIVE,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setAssignments((current) =>
+          current.map((item) => (item.id === assignment.id ? { ...item, ...data } : item))
+        )
+      }
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -126,6 +179,17 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
                 className="w-full px-3 py-2 border rounded-lg"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">作业状态</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value={ASSIGNMENT_STATUS.ACTIVE}>启用</option>
+                <option value={ASSIGNMENT_STATUS.DISABLED}>停用</option>
+              </select>
+            </div>
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -154,7 +218,18 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
             <div key={assignment.id} className="bg-white p-6 rounded-lg shadow">
               <div className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-lg">{assignment.title}</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-semibold text-lg">{assignment.title}</h3>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        assignment.status === ASSIGNMENT_STATUS.ACTIVE
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {assignment.status === ASSIGNMENT_STATUS.ACTIVE ? '启用中' : '已停用'}
+                    </span>
+                  </div>
                   <p className="text-gray-600 mt-2 line-clamp-2">{assignment.description}</p>
                   <div className="flex gap-4 mt-3 text-sm text-gray-500">
                     <span>提交数: {assignment._count.submissions}</span>
@@ -171,6 +246,13 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
                   >
                     查看提交
                   </Link>
+                  <button
+                    onClick={() => handleToggleStatus(assignment)}
+                    disabled={togglingId === assignment.id}
+                    className="bg-slate-600 text-white px-3 py-1 rounded hover:bg-slate-700 text-sm disabled:opacity-50"
+                  >
+                    {assignment.status === ASSIGNMENT_STATUS.ACTIVE ? '停用' : '启用'}
+                  </button>
                   <button
                     onClick={() => handleEdit(assignment)}
                     className="bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 text-sm"

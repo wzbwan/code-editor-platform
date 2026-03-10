@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
+import { ASSIGNMENT_STATUS } from '@/lib/constants'
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -58,6 +59,18 @@ export async function POST(request: NextRequest) {
 
   if (!assignmentId || !code) {
     return NextResponse.json({ error: '缺少必填字段' }, { status: 400 })
+  }
+
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      id: assignmentId,
+      status: ASSIGNMENT_STATUS.ACTIVE,
+    },
+    select: { id: true },
+  })
+
+  if (!assignment) {
+    return NextResponse.json({ error: '作业不可用或不存在' }, { status: 404 })
   }
 
   const submission = await prisma.submission.upsert({

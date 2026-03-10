@@ -13,7 +13,10 @@
 ### 教师端
 - 管理学生账号（添加/删除）
 - Excel批量导入学生账号
+- 通过姓名、音序、学号后三位快速检索学生
+- 快速给学生加分/扣分，并记录理由与时间
 - 创建和管理作业
+- 控制作业启用/停用
 - 批阅学生提交的代码
 
 ## 技术栈
@@ -50,6 +53,14 @@ npm run dev
 
 ```bash
 NEXTAUTH_URL=https://your-domain.example.com
+```
+
+如果你要接手机 App，对外接口还需要配置：
+
+```bash
+MOBILE_API_TOKEN=your-mobile-api-token
+MOBILE_API_OPERATOR_USERNAME=teacher
+MOBILE_API_OPERATOR_LABEL=巡课App
 ```
 
 ## 测试账号
@@ -93,6 +104,36 @@ Excel 第一行需包含以下列名之一：
 - `姓名` 或 `name`
 - `用户名` 或 `username`
 - `密码` 或 `password`
+
+### 学生检索与积分
+
+教师可在“学生管理”页：
+
+- 按姓名检索学生
+- 按姓名音序检索学生，例如 `zs`
+- 按用户名或学号后三位检索学生，例如 `123`
+- 快速执行 `+1`、`+2`、`-1` 或自定义分值操作
+- 查看最近积分流水记录
+
+### 手机 App 接口
+
+已提供两组供手机 App 使用的 Bearer Token 接口：
+
+- `POST /api/mobile/auth/login`
+- `GET /api/mobile/auth/me`
+- `GET /api/mobile/students?query=zs`
+- `POST /api/mobile/points`
+
+`POST /api/mobile/points` 请求体示例：
+
+```json
+{
+  "username": "24E123",
+  "delta": 2,
+  "reason": "课堂练习表现积极",
+  "occurredAt": "2026-03-10T09:15:00+08:00"
+}
+```
 
 ### 禁止粘贴的代码编辑器
 

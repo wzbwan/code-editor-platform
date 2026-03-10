@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
   const user = await prisma.user.create({
     data: { username, password: hashedPassword, name },
-    select: { id: true, username: true, name: true },
+    select: { id: true, username: true, name: true, pointBalance: true },
   })
 
   return NextResponse.json(user)

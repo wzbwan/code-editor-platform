@@ -188,6 +188,7 @@ export async function POST(request: Request) {
             id: true,
             name: true,
             username: true,
+            pointBalance: true,
             createdAt: true,
           },
         })

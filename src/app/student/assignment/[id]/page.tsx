@@ -1,4 +1,5 @@
 import { requireStudent } from '@/lib/auth'
+import { ASSIGNMENT_STATUS } from '@/lib/constants'
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import CodeEditorClient from './CodeEditorClient'
@@ -11,8 +12,11 @@ export default async function AssignmentPage({ params }: Props) {
   const user = await requireStudent()
   const { id } = await params
   
-  const assignment = await prisma.assignment.findUnique({
-    where: { id },
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      id,
+      status: ASSIGNMENT_STATUS.ACTIVE,
+    },
     include: {
       submissions: {
         where: { studentId: user.id },
