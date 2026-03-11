@@ -3,3 +3,10 @@ node_modules
 .env.local
 *.db
 *.db-journal
+.DS_Store
+tsconfig.tsbuildinfo
+local-runner/bin/
+local-runner/dist/
+local-runner/.gocache/
+local-runner/runner-data/
+local-runner/.env

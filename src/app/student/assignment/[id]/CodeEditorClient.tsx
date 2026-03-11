@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
+import LocalRunnerTerminal from '@/components/LocalRunnerTerminal'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -115,6 +116,8 @@ export default function CodeEditorClient({ assignment }: Props) {
               </div>
             </div>
           </div>
+
+          <LocalRunnerTerminal assignmentTitle={assignment.title} code={code} />
         </div>
       </div>
     </div>
