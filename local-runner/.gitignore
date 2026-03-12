@@ -1,5 +1,6 @@
 bin/
 dist/
+release/
 .gocache/
 runner-data/
 .env

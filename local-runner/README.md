@@ -74,6 +74,22 @@ go run ./cmd/runner
 go build -o ./bin/local-runner ./cmd/runner
 ```
 
+打包学生分发版本：
+
+```bash
+./package-release.sh
+```
+
+脚本会生成：
+
+- `release/local-runner-windows-amd64.zip`
+- `release/local-runner-linux-amd64.tar.gz`
+
+分发包内已经包含启动脚本，并预置以下配置：
+
+- `RUNNER_ALLOWED_ORIGINS=https://python.zengbao.wang`
+- `RUNNER_SHARED_TOKEN=code-editor-platform-python-zengbao-wang`
+
 如果你的 Go 环境不在 `PATH` 里，可以直接使用绝对路径，例如：
 
 ```bash
@@ -116,3 +132,5 @@ curl -X POST http://127.0.0.1:18423/v1/run \
 3. 用 `EventSource` 连接 `/v1/sessions/:id/stream`
 4. 学生在网页终端里的输入会被转发到 `/v1/sessions/:id/stdin`
 5. 点击“停止”时调用 `/v1/sessions/:id/stop`
+
+**任务来源与内容**
