@@ -12,6 +12,7 @@ export default async function StudentsPage() {
       id: true,
       username: true,
       name: true,
+      className: true,
       pointBalance: true,
       createdAt: true,
       _count: { select: { submissions: true } },

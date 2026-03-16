@@ -3,11 +3,13 @@ import { pinyin } from 'pinyin-pro'
 export interface StudentSearchTarget {
   name: string
   username: string
+  className?: string | null
 }
 
 export interface StudentSearchIndex {
   name: string
   username: string
+  className: string
   namePinyin: string
   nameInitials: string
   usernameSuffix: string
@@ -28,6 +30,7 @@ export function buildStudentSearchIndex(
   return {
     name: student.name.trim().toLowerCase(),
     username: student.username.trim().toLowerCase(),
+    className: student.className?.trim().toLowerCase() ?? '',
     namePinyin: compact(pinyin(student.name, { toneType: 'none' })),
     nameInitials: compact(
       pinyin(student.name, { toneType: 'none', pattern: 'first' })
@@ -52,6 +55,7 @@ export function matchesStudentQuery(
   return (
     searchIndex.name.includes(normalizedQuery) ||
     searchIndex.username.includes(normalizedQuery) ||
+    searchIndex.className.includes(normalizedQuery) ||
     searchIndex.namePinyin.includes(compactQuery) ||
     searchIndex.nameInitials.includes(compactQuery) ||
     searchIndex.usernameSuffix.includes(compactQuery)

@@ -24,6 +24,7 @@ async function main() {
       username: 'student1',
       password: hashedPassword,
       name: '张三',
+      className: '1班',
       role: 'STUDENT',
     },
   })
@@ -35,6 +36,7 @@ async function main() {
       username: 'student2',
       password: hashedPassword,
       name: '李四',
+      className: '1班',
       role: 'STUDENT',
     },
   })

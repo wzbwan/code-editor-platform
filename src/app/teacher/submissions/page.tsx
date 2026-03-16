@@ -7,21 +7,27 @@ interface Props {
 }
 
 export default async function SubmissionsPage({ searchParams }: Props) {
-  await requireTeacher()
+  const teacher = await requireTeacher()
   const { assignmentId } = await searchParams
   
   const [submissions, assignments] = await Promise.all([
     assignmentId
       ? prisma.submission.findMany({
-          where: { assignmentId },
+          where: {
+            assignmentId,
+            assignment: { teacherId: teacher.id },
+          },
           include: {
-            student: { select: { id: true, name: true, username: true } },
+            student: {
+              select: { id: true, name: true, username: true, className: true },
+            },
             assignment: { select: { id: true, title: true } },
           },
           orderBy: { submittedAt: 'desc' },
         })
       : [],
     prisma.assignment.findMany({
+      where: { teacherId: teacher.id },
       select: { id: true, title: true },
       orderBy: { createdAt: 'desc' },
     }),

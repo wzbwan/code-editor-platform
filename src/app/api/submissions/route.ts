@@ -4,6 +4,21 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { ASSIGNMENT_STATUS } from '@/lib/constants'
 
+function parseScore(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return { score: null as number | null }
+  }
+
+  const score =
+    typeof value === 'number' ? value : Number.parseInt(String(value).trim(), 10)
+
+  if (!Number.isInteger(score) || score < 0 || score > 100) {
+    return { error: '分数必须是 0-100 的整数' }
+  }
+
+  return { score }
+}
+
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) {
@@ -15,12 +30,16 @@ export async function GET(request: NextRequest) {
   const studentId = searchParams.get('studentId')
 
   if (assignmentId && studentId) {
+    if (session.user.role === 'STUDENT' && studentId !== session.user.id) {
+      return NextResponse.json({ error: '未授权' }, { status: 401 })
+    }
+
     const submission = await prisma.submission.findUnique({
       where: {
         studentId_assignmentId: { studentId, assignmentId },
       },
       include: {
-        student: { select: { id: true, name: true, username: true } },
+        student: { select: { id: true, name: true, username: true, className: true } },
         assignment: { select: { title: true, description: true } },
       },
     })
@@ -28,11 +47,19 @@ export async function GET(request: NextRequest) {
   }
 
   if (assignmentId) {
+    if (session.user.role !== 'TEACHER') {
+      return NextResponse.json({ error: '未授权' }, { status: 401 })
+    }
+
     const submissions = await prisma.submission.findMany({
-      where: { assignmentId },
-      include: {
-        student: { select: { id: true, name: true, username: true } },
+      where: {
+        assignmentId,
+        assignment: { teacherId: session.user.id },
       },
+      include: {
+        student: { select: { id: true, name: true, username: true, className: true } },
+      },
+      orderBy: { submittedAt: 'desc' },
     })
     return NextResponse.json(submissions)
   }
@@ -110,11 +137,28 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '缺少提交ID' }, { status: 400 })
   }
 
+  const parsedScore = parseScore(score)
+  if (parsedScore.error) {
+    return NextResponse.json({ error: parsedScore.error }, { status: 400 })
+  }
+
+  const existingSubmission = await prisma.submission.findFirst({
+    where: {
+      id,
+      assignment: { teacherId: session.user.id },
+    },
+    select: { id: true },
+  })
+
+  if (!existingSubmission) {
+    return NextResponse.json({ error: '提交不存在' }, { status: 404 })
+  }
+
   const submission = await prisma.submission.update({
-    where: { id },
+    where: { id: existingSubmission.id },
     data: {
-      score: score !== undefined ? score : null,
-      feedback: feedback || null,
+      score: parsedScore.score,
+      feedback: typeof feedback === 'string' && feedback.trim() ? feedback.trim() : null,
       reviewedAt: new Date(),
     },
   })

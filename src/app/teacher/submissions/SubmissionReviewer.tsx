@@ -10,7 +10,7 @@ interface Submission {
   feedback: string | null
   submittedAt: string
   reviewedAt: string | null
-  student: { id: string; name: string; username: string }
+  student: { id: string; name: string; username: string; className: string | null }
   assignment: { id: string; title: string }
 }
 
@@ -38,32 +38,55 @@ export default function SubmissionReviewer({
   const [score, setScore] = useState('')
   const [feedback, setFeedback] = useState('')
   const [loading, setLoading] = useState(false)
+  const [batchImporting, setBatchImporting] = useState(false)
+  const [batchResult, setBatchResult] = useState<{
+    updatedCount: number
+    skippedCount: number
+    skippedRows: Array<{ rowNumber: number; username: string; reason: string }>
+  } | null>(null)
 
-  const handleAssignmentChange = async (assignmentId: string) => {
-    setSelectedAssignmentId(assignmentId)
-    setSelectedSubmission(null)
-    
-    if (!assignmentId) {
-      setSubmissions([])
+  const applySelectedSubmission = (submission: Submission | null) => {
+    setSelectedSubmission(submission)
+    setScore(submission?.score?.toString() || '')
+    setFeedback(submission?.feedback || '')
+  }
+
+  const loadSubmissions = async (assignmentId: string, preferredSubmissionId?: string) => {
+    const res = await fetch(`/api/submissions?assignmentId=${assignmentId}`)
+    const data = await res.json()
+
+    if (!res.ok) {
+      alert(data.error || '加载提交失败')
       return
     }
 
-    const res = await fetch(`/api/submissions?assignmentId=${assignmentId}`)
-    const data = await res.json()
     setSubmissions(data)
-    if (data.length > 0) {
-      setSelectedSubmission(data[0])
-      setScore(data[0].score?.toString() || '')
-      setFeedback(data[0].feedback || '')
-    } else {
-      setSelectedSubmission(null)
+
+    if (data.length === 0) {
+      applySelectedSubmission(null)
+      return
     }
+
+    const nextSubmission =
+      data.find((item: Submission) => item.id === preferredSubmissionId) || data[0]
+    applySelectedSubmission(nextSubmission)
+  }
+
+  const handleAssignmentChange = async (assignmentId: string) => {
+    setSelectedAssignmentId(assignmentId)
+    setBatchResult(null)
+    
+    if (!assignmentId) {
+      setSubmissions([])
+      applySelectedSubmission(null)
+      return
+    }
+
+    await loadSubmissions(assignmentId)
   }
 
   const handleSelectSubmission = (submission: Submission) => {
-    setSelectedSubmission(submission)
-    setScore(submission.score?.toString() || '')
-    setFeedback(submission.feedback || '')
+    applySelectedSubmission(submission)
   }
 
   const handleReview = async () => {
@@ -86,17 +109,68 @@ export default function SubmissionReviewer({
         setSubmissions(submissions.map(s => 
           s.id === updated.id ? { ...s, ...updated } : s
         ))
-        setSelectedSubmission({ ...selectedSubmission, ...updated })
+        applySelectedSubmission({ ...selectedSubmission, ...updated })
         alert('批阅成功！')
+      } else {
+        const error = await res.json()
+        alert(error.error || '批阅失败')
       }
     } finally {
       setLoading(false)
     }
   }
 
+  const handleBatchDownload = () => {
+    if (!selectedId) {
+      return
+    }
+
+    window.location.href = `/api/submissions/export?assignmentId=${selectedId}`
+  }
+
+  const handleBatchReviewImport = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+    if (!file || !selectedId) {
+      return
+    }
+
+    setBatchImporting(true)
+    setBatchResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('assignmentId', selectedId)
+      formData.append('file', file)
+
+      const res = await fetch('/api/submissions/review-import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '批量批阅失败')
+        return
+      }
+
+      setBatchResult({
+        updatedCount: data.updatedCount,
+        skippedCount: data.skippedCount,
+        skippedRows: data.skippedRows,
+      })
+      await loadSubmissions(selectedId, selectedSubmission?.id)
+    } finally {
+      setBatchImporting(false)
+      event.target.value = ''
+    }
+  }
+
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <select
           value={selectedId}
           onChange={(e) => handleAssignmentChange(e.target.value)}
@@ -107,7 +181,57 @@ export default function SubmissionReviewer({
             <option key={a.id} value={a.id}>{a.title}</option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={handleBatchDownload}
+          disabled={!selectedId}
+          className="rounded-lg bg-slate-700 px-4 py-2 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          批量下载压缩包
+        </button>
+        <label
+          className={`rounded-lg px-4 py-2 text-white ${
+            selectedId && !batchImporting
+              ? 'cursor-pointer bg-emerald-600 hover:bg-emerald-700'
+              : 'cursor-not-allowed bg-emerald-300'
+          }`}
+        >
+          {batchImporting ? '批量批阅中...' : '上传 Excel 批量批阅'}
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleBatchReviewImport}
+            disabled={!selectedId || batchImporting}
+          />
+        </label>
+        <span className="text-sm text-gray-500">
+          下载包含代码、作业要求和提交信息 Excel；批量批阅 Excel 需包含用户名、姓名、分数、评语
+        </span>
       </div>
+
+      {batchResult && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-green-700">成功批阅 {batchResult.updatedCount} 条</span>
+            <span className="text-amber-700">跳过 {batchResult.skippedCount} 条</span>
+          </div>
+          {batchResult.skippedRows.length > 0 && (
+            <div className="mt-3 space-y-1 text-sm text-gray-600">
+              {batchResult.skippedRows.slice(0, 10).map((row) => (
+                <p key={`${row.rowNumber}-${row.username}`}>
+                  第 {row.rowNumber} 行
+                  {row.username ? `（${row.username}）` : ''}
+                  ：{row.reason}
+                </p>
+              ))}
+              {batchResult.skippedRows.length > 10 && (
+                <p>其余 {batchResult.skippedRows.length - 10} 条跳过记录未展开显示。</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {!selectedId ? (
         <div className="text-center text-gray-500 py-12">请选择一个作业查看提交</div>
@@ -129,6 +253,9 @@ export default function SubmissionReviewer({
                   <div className="font-medium">{submission.student.name}</div>
                   <div className="text-sm text-gray-500">
                     {submission.student.username}
+                    {submission.student.className
+                      ? ` · ${submission.student.className}`
+                      : ''}
                   </div>
                   <div className="flex justify-between items-center mt-2 text-sm">
                     <span className="text-gray-400">
@@ -149,7 +276,12 @@ export default function SubmissionReviewer({
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white rounded-lg shadow">
                 <div className="bg-gray-50 px-4 py-3 font-medium flex justify-between">
-                  <span>代码 - {selectedSubmission.student.name}</span>
+                  <span>
+                    代码 - {selectedSubmission.student.name}
+                    {selectedSubmission.student.className
+                      ? `（${selectedSubmission.student.className}）`
+                      : ''}
+                  </span>
                   <span className="text-sm text-gray-500">
                     提交时间: {new Date(selectedSubmission.submittedAt).toLocaleString()}
                   </span>

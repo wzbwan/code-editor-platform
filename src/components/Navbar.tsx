@@ -33,7 +33,10 @@ export default function Navbar() {
                   <Link href="/teacher/submissions" className="hover:text-gray-300">批阅作业</Link>
                 </>
               ) : (
-                <Link href="/student" className="hover:text-gray-300">我的作业</Link>
+                <>
+                  <Link href="/student" className="hover:text-gray-300">我的作业</Link>
+                  <Link href="/student/profile" className="hover:text-gray-300">个人中心</Link>
+                </>
               )}
               <button
                 onClick={handleSignOut}

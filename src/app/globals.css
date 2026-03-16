@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
 .local-runner-terminal .xterm {
   padding: 8px;
 }

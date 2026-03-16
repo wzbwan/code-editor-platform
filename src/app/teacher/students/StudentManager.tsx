@@ -11,6 +11,7 @@ interface Student {
   id: string
   username: string
   name: string
+  className: string | null
   pointBalance: number
   createdAt: string
   _count: { submissions: number }
@@ -29,6 +30,7 @@ interface SkippedRow {
 
 interface ImportResult {
   createdCount: number
+  updatedCount: number
   skippedCount: number
   skippedRows: SkippedRow[]
 }
@@ -80,12 +82,18 @@ export default function StudentManager({
     sortStudentsByUsername(initialStudents.map(enrichStudent))
   )
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ username: '', password: '', name: '' })
+  const [form, setForm] = useState({
+    username: '',
+    password: '',
+    name: '',
+    className: '',
+  })
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [pointLoadingId, setPointLoadingId] = useState<string | null>(null)
+  const [resettingPasswordId, setResettingPasswordId] = useState<string | null>(null)
   const [recentPointRecords, setRecentPointRecords] = useState(initialRecentPointRecords)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const filteredStudents = students.filter((student) =>
@@ -111,7 +119,7 @@ export default function StudentManager({
             enrichStudent({ ...data, _count: { submissions: 0 } }),
           ])
         )
-        setForm({ username: '', password: '', name: '' })
+        setForm({ username: '', password: '', name: '', className: '' })
         setShowForm(false)
         setImportResult(null)
       } else {
@@ -160,6 +168,7 @@ export default function StudentManager({
         if (data.skippedRows) {
           setImportResult({
             createdCount: 0,
+            updatedCount: 0,
             skippedCount: data.skippedRows.length,
             skippedRows: data.skippedRows,
           })
@@ -173,18 +182,39 @@ export default function StudentManager({
           _count: { submissions: 0 },
         })
       )
+      const updatedStudents = data.updatedStudents as Omit<Student, '_count'>[]
 
-      if (createdStudents.length > 0) {
-        setStudents((current) =>
-          sortStudentsByUsername([
-            ...current,
-            ...createdStudents.map((student) => enrichStudent(student)),
-          ])
+      setStudents((current) => {
+        const studentMap = new Map(
+          current.map((student) => [student.id, student] as const)
         )
-      }
+
+        for (const student of createdStudents) {
+          studentMap.set(student.id, enrichStudent(student))
+        }
+
+        for (const student of updatedStudents) {
+          const existing = studentMap.get(student.id)
+          if (!existing) {
+            continue
+          }
+
+          studentMap.set(
+            student.id,
+            enrichStudent({
+              ...existing,
+              ...student,
+              _count: existing._count,
+            })
+          )
+        }
+
+        return sortStudentsByUsername(Array.from(studentMap.values()))
+      })
 
       setImportResult({
         createdCount: data.createdCount,
+        updatedCount: data.updatedCount,
         skippedCount: data.skippedCount,
         skippedRows: data.skippedRows,
       })
@@ -273,6 +303,36 @@ export default function StudentManager({
     await submitPointChange(student, delta, reason.trim())
   }
 
+  const handleResetPassword = async (student: StudentWithSearchIndex) => {
+    if (!confirm(`确定将 ${student.name}（${student.username}）的密码重置为 111111 吗？`)) {
+      return
+    }
+
+    setResettingPasswordId(student.id)
+
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: student.id,
+          action: 'RESET_PASSWORD',
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '重置密码失败')
+        return
+      }
+
+      alert(`已将 ${student.name} 的密码重置为 ${data.password}`)
+    } finally {
+      setResettingPasswordId(null)
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -294,7 +354,7 @@ export default function StudentManager({
           />
         </label>
         <span className="text-sm text-gray-500">
-          首行需包含：姓名 / 用户名 / 密码
+          首行需包含：姓名 / 用户名，新增账号需密码，可选班级；已存在用户名会回填班级
         </span>
       </div>
 
@@ -307,7 +367,7 @@ export default function StudentManager({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="输入姓名、音序（如 zs）、用户名或学号后三位"
+            placeholder="输入姓名、班级、音序（如 zs）、用户名或学号后三位"
             className="min-w-[280px] flex-1 rounded-lg border px-3 py-2"
           />
           <button
@@ -326,7 +386,7 @@ export default function StudentManager({
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow mb-6">
           <h2 className="text-lg font-semibold mb-4">添加学生</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div>
               <label className="block text-sm font-medium mb-1">姓名</label>
               <input
@@ -357,6 +417,16 @@ export default function StudentManager({
                 required
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">班级</label>
+              <input
+                type="text"
+                value={form.className}
+                onChange={(e) => setForm({ ...form, className: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="例如：计科2301"
+              />
+            </div>
           </div>
           <button
             type="submit"
@@ -372,6 +442,7 @@ export default function StudentManager({
         <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="text-green-700">成功导入 {importResult.createdCount} 条</span>
+            <span className="text-blue-700">更新班级 {importResult.updatedCount} 条</span>
             <span className="text-amber-700">跳过 {importResult.skippedCount} 条</span>
           </div>
           {importResult.skippedRows.length > 0 && (
@@ -400,6 +471,7 @@ export default function StudentManager({
               <tr>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">姓名</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">用户名</th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">班级</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">积分</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">提交数</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">创建时间</th>
@@ -411,6 +483,7 @@ export default function StudentManager({
                 <tr key={student.id}>
                   <td className="px-6 py-4">{student.name}</td>
                   <td className="px-6 py-4">{student.username}</td>
+                  <td className="px-6 py-4">{student.className || '-'}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`rounded-full px-3 py-1 text-sm font-medium ${
@@ -455,6 +528,13 @@ export default function StudentManager({
                         className="rounded bg-slate-600 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
                       >
                         自定义
+                      </button>
+                      <button
+                        onClick={() => handleResetPassword(student)}
+                        disabled={resettingPasswordId === student.id}
+                        className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {resettingPasswordId === student.id ? '重置中...' : '重置密码'}
                       </button>
                       <button
                         onClick={() => handleDelete(student.id)}

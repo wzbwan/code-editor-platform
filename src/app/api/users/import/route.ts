@@ -9,6 +9,7 @@ const HEADER_ALIASES = {
   name: ['name', '姓名', '学生姓名'],
   username: ['username', '用户名', '账号', '学号'],
   password: ['password', '密码', '初始密码'],
+  className: ['class', 'classname', 'class_name', '班级'],
 } as const
 
 type ParsedStudentRow = {
@@ -16,6 +17,16 @@ type ParsedStudentRow = {
   name: string
   username: string
   password: string
+  className: string
+}
+
+type ImportedStudent = {
+  id: string
+  name: string
+  username: string
+  className: string | null
+  pointBalance: number
+  createdAt: Date
 }
 
 type SkippedRow = {
@@ -79,12 +90,12 @@ export async function POST(request: Request) {
   const nameIndex = findHeaderIndex(headers, HEADER_ALIASES.name)
   const usernameIndex = findHeaderIndex(headers, HEADER_ALIASES.username)
   const passwordIndex = findHeaderIndex(headers, HEADER_ALIASES.password)
+  const classNameIndex = findHeaderIndex(headers, HEADER_ALIASES.className)
 
-  if (nameIndex === -1 || usernameIndex === -1 || passwordIndex === -1) {
+  if (nameIndex === -1 || usernameIndex === -1) {
     return NextResponse.json(
       {
-        error:
-          'Excel 表头缺少必填列，请包含：姓名(name)、用户名(username)、密码(password)',
+        error: 'Excel 表头缺少必填列，请包含：姓名(name)、用户名(username)',
       },
       { status: 400 }
     )
@@ -99,17 +110,19 @@ export async function POST(request: Request) {
     const rowNumber = index + 1
     const name = normalizeCell(row[nameIndex])
     const username = normalizeCell(row[usernameIndex])
-    const password = normalizeCell(row[passwordIndex])
+    const password = passwordIndex === -1 ? '' : normalizeCell(row[passwordIndex])
+    const className =
+      classNameIndex === -1 ? '' : normalizeCell(row[classNameIndex])
 
-    if (!name && !username && !password) {
+    if (!name && !username && !password && !className) {
       continue
     }
 
-    if (!name || !username || !password) {
+    if (!name || !username) {
       skippedRows.push({
         rowNumber,
         username,
-        reason: '姓名、用户名、密码均为必填',
+        reason: '姓名、用户名为必填',
       })
       continue
     }
@@ -124,7 +137,7 @@ export async function POST(request: Request) {
     }
 
     seenUsernames.set(username, rowNumber)
-    parsedRows.push({ rowNumber, name, username, password })
+    parsedRows.push({ rowNumber, name, username, password, className })
   }
 
   if (parsedRows.length === 0) {
@@ -141,29 +154,79 @@ export async function POST(request: Request) {
       },
     },
     select: {
+      id: true,
       username: true,
+      role: true,
+      className: true,
     },
   })
 
-  const existingUsernames = new Set(existingUsers.map((user) => user.username))
-  const rowsToCreate = parsedRows.filter((row) => {
-    if (existingUsernames.has(row.username)) {
+  const existingUsersByUsername = new Map(
+    existingUsers.map((user) => [user.username, user] as const)
+  )
+  const rowsToCreate: ParsedStudentRow[] = []
+  const rowsToUpdate: Array<{
+    id: string
+    className: string
+  }> = []
+
+  for (const row of parsedRows) {
+    const existingUser = existingUsersByUsername.get(row.username)
+
+    if (!existingUser) {
+      if (!row.password) {
+        skippedRows.push({
+          rowNumber: row.rowNumber,
+          username: row.username,
+          reason: '新增学生必须提供密码',
+        })
+        continue
+      }
+
+      rowsToCreate.push(row)
+      continue
+    }
+
+    if (existingUser.role !== 'STUDENT') {
       skippedRows.push({
         rowNumber: row.rowNumber,
         username: row.username,
-        reason: '用户名已存在',
+        reason: '该用户名已被非学生账号占用',
       })
-      return false
+      continue
     }
 
-    return true
-  })
+    if (!row.className) {
+      skippedRows.push({
+        rowNumber: row.rowNumber,
+        username: row.username,
+        reason: '用户名已存在，如需回填班级请提供班级列',
+      })
+      continue
+    }
 
-  if (rowsToCreate.length === 0) {
+    if (existingUser.className === row.className) {
+      skippedRows.push({
+        rowNumber: row.rowNumber,
+        username: row.username,
+        reason: '班级无变化',
+      })
+      continue
+    }
+
+    rowsToUpdate.push({
+      id: existingUser.id,
+      className: row.className,
+    })
+  }
+
+  if (rowsToCreate.length === 0 && rowsToUpdate.length === 0) {
     return NextResponse.json({
       createdCount: 0,
+      updatedCount: 0,
       skippedCount: skippedRows.length,
       createdStudents: [],
+      updatedStudents: [],
       skippedRows,
     })
   }
@@ -176,29 +239,61 @@ export async function POST(request: Request) {
   )
 
   try {
-    const createdStudents = await prisma.$transaction(
-      hashedRows.map(({ row, password }) =>
-        prisma.user.create({
-          data: {
-            name: row.name,
-            username: row.username,
-            password,
-          },
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            pointBalance: true,
-            createdAt: true,
-          },
-        })
-      )
+    const { createdStudents, updatedStudents } = await prisma.$transaction(
+      async (tx) => {
+        const createdStudents: ImportedStudent[] = []
+        const updatedStudents: ImportedStudent[] = []
+
+        for (const { row, password } of hashedRows) {
+          createdStudents.push(
+            await tx.user.create({
+              data: {
+                name: row.name,
+                username: row.username,
+                password,
+                className: row.className || null,
+              },
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                className: true,
+                pointBalance: true,
+                createdAt: true,
+              },
+            })
+          )
+        }
+
+        for (const row of rowsToUpdate) {
+          updatedStudents.push(
+            await tx.user.update({
+              where: { id: row.id },
+              data: {
+                className: row.className,
+              },
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                className: true,
+                pointBalance: true,
+                createdAt: true,
+              },
+            })
+          )
+        }
+
+        return { createdStudents, updatedStudents }
+      }
     )
 
     return NextResponse.json({
       createdCount: createdStudents.length,
+      updatedCount: updatedStudents.length,
       skippedCount: skippedRows.length,
       createdStudents,
+      updatedStudents,
       skippedRows,
     })
   } catch (error) {
