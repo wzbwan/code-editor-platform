@@ -84,6 +84,7 @@ go build -o ./bin/local-runner ./cmd/runner
 
 - `release/local-runner-windows-amd64.zip`
 - `release/local-runner-linux-amd64.tar.gz`
+- `release/local-runner-linux-arm64.tar.gz`
 
 分发包内已经包含启动脚本，并预置以下配置：
 

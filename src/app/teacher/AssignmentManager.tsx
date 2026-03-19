@@ -241,6 +241,12 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
                 </div>
                 <div className="flex gap-2">
                   <Link
+                    href={`/teacher/assignment-status?assignmentId=${assignment.id}`}
+                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
+                  >
+                    提交状态
+                  </Link>
+                  <Link
                     href={`/teacher/submissions?assignmentId=${assignment.id}`}
                     className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
                   >

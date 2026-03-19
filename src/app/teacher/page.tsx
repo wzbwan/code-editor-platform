@@ -3,9 +3,12 @@ import { prisma } from '@/lib/prisma'
 import AssignmentManager from './AssignmentManager'
 
 export default async function TeacherPage() {
-  await requireTeacher()
+  const teacher = await requireTeacher()
   
   const assignments = await prisma.assignment.findMany({
+    where: {
+      teacherId: teacher.id,
+    },
     include: {
       _count: { select: { submissions: true } },
     },

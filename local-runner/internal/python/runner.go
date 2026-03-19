@@ -147,6 +147,7 @@ func (r *Runner) Run(request ExecutionRequest) (ExecutionResult, error) {
 	commandArgs := append(append([]string{}, prepared.command.Args...), "-u", prepared.filename)
 	cmd := exec.CommandContext(ctx, prepared.command.Name, commandArgs...)
 	cmd.Dir = prepared.runDir
+	cmd.Env = pythonProcessEnv()
 	cmd.Stdin = strings.NewReader(request.Stdin)
 
 	var stdout bytes.Buffer

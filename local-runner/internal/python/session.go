@@ -73,6 +73,7 @@ func (m *SessionManager) Create(request ExecutionRequest) (*Session, error) {
 	commandArgs := append(append([]string{}, prepared.command.Args...), "-u", prepared.filename)
 	cmd := exec.CommandContext(ctx, prepared.command.Name, commandArgs...)
 	cmd.Dir = prepared.runDir
+	cmd.Env = pythonProcessEnv()
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
