@@ -1,6 +1,7 @@
 import { requireStudent } from '@/lib/auth'
 import { ASSIGNMENT_STATUS } from '@/lib/constants'
 import { prisma } from '@/lib/prisma'
+import ActivePracticeWatcher from './ActivePracticeWatcher'
 import AssignmentList from './AssignmentList'
 
 export default async function StudentPage() {
@@ -22,6 +23,7 @@ export default async function StudentPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
+      <ActivePracticeWatcher />
       <h1 className="text-2xl font-bold mb-6">我的作业</h1>
       <AssignmentList assignments={JSON.parse(JSON.stringify(assignments))} />
     </div>

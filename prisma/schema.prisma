@@ -22,6 +22,11 @@ model User {
   assignments Assignment[] @relation("TeacherAssignments")
   pointRecords StudentPointRecord[] @relation("StudentPointRecords")
   operatedPointRecords StudentPointRecord[] @relation("OperatorPointRecords")
+  questionBankItems QuestionBankItem[] @relation("TeacherQuestionBankItems")
+  practicePapers PracticePaper[] @relation("TeacherPracticePapers")
+  teachingPracticeSessions PracticeSession[] @relation("TeacherPracticeSessions")
+  studentPracticeSessions PracticeSessionStudent[] @relation("StudentPracticeSessions")
+  practiceResponses PracticeResponse[] @relation("StudentPracticeResponses")
 }
 
 model Assignment {
@@ -70,4 +75,142 @@ model StudentPointRecord {
 
   @@index([studentId, occurredAt])
   @@index([occurredAt])
+}
+
+model QuestionBankItem {
+  id        String   @id @default(cuid())
+  content   String
+  type      String
+  score     Int
+  optionA   String?
+  optionB   String?
+  optionC   String?
+  optionD   String?
+  answer    String
+  scope     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacherId String
+  teacher   User     @relation("TeacherQuestionBankItems", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  paperQuestions PaperQuestion[]
+
+  @@index([teacherId, type])
+  @@index([teacherId, scope])
+}
+
+model PracticePaper {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacherId String
+  teacher   User     @relation("TeacherPracticePapers", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  questions PaperQuestion[]
+  sessions  PracticeSession[]
+
+  @@index([teacherId, createdAt])
+}
+
+model PaperQuestion {
+  id          String   @id @default(cuid())
+  orderIndex  Int
+  content     String
+  type        String
+  score       Int
+  optionA     String?
+  optionB     String?
+  optionC     String?
+  optionD     String?
+  answer      String
+  scope       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  paperId        String
+  paper          PracticePaper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  questionBankId String?
+  questionBank   QuestionBankItem? @relation(fields: [questionBankId], references: [id], onDelete: SetNull)
+
+  responses PracticeResponse[]
+
+  @@unique([paperId, orderIndex])
+  @@index([paperId])
+}
+
+model PracticeSession {
+  id                   String   @id @default(cuid())
+  mode                 String
+  status               String   @default("PENDING")
+  className            String
+  durationMinutes      Int?
+  currentQuestionIndex Int      @default(0)
+  startedAt            DateTime?
+  questionStartedAt    DateTime?
+  endedAt              DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  paperId    String
+  paper      PracticePaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  teacherId  String
+  teacher    User          @relation("TeacherPracticeSessions", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  students  PracticeSessionStudent[]
+  responses PracticeResponse[]
+
+  @@index([teacherId, createdAt])
+  @@index([className, status])
+}
+
+model PracticeSessionStudent {
+  id              String   @id @default(cuid())
+  status          String   @default("PENDING")
+  questionOrder   String?
+  optionOrder     String?
+  startedAt       DateTime?
+  submittedAt     DateTime?
+  rawScore        Int?
+  finalScore      Int?
+  bonusMultiplier Float?
+  awardedPointDelta Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessionId String
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User            @relation("StudentPracticeSessions", fields: [studentId], references: [id], onDelete: Cascade)
+
+  responses PracticeResponse[]
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, createdAt])
+}
+
+model PracticeResponse {
+  id               String   @id @default(cuid())
+  answer           String
+  isCorrect        Boolean?
+  awardedScore     Int?
+  awardedPointDelta Int?
+  settledAt        DateTime?
+  submittedAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  sessionId        String
+  session          PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentSessionId String
+  studentSession   PracticeSessionStudent @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          User @relation("StudentPracticeResponses", fields: [studentId], references: [id], onDelete: Cascade)
+  paperQuestionId  String
+  paperQuestion    PaperQuestion @relation(fields: [paperQuestionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId, paperQuestionId])
+  @@index([paperQuestionId, submittedAt])
 }
