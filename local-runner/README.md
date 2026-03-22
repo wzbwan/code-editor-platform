@@ -56,7 +56,7 @@
 - `RUNNER_PYTHON_ARGS`
   显式指定 Python 启动参数
 - `RUNNER_MAX_RUN_SECONDS`
-  最大运行时长，默认 `10`
+  最大运行时长，默认 `300`
 - `RUNNER_WORKDIR`
   临时运行目录，默认 `./runner-data`
 
@@ -125,6 +125,7 @@ curl -X POST http://127.0.0.1:18423/v1/run \
 - `runnerUrl`
 - `sharedToken`
 - `timeoutSeconds`
+  当前网页默认会传 `300` 秒给运行器；交互式 `input()` 等待时间也算在这个时长内。
 
 然后前端直接连接本机运行器：
 

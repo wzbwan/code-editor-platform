@@ -30,7 +30,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	maxRunSeconds, err := getInt("RUNNER_MAX_RUN_SECONDS", 10)
+	maxRunSeconds, err := getInt("RUNNER_MAX_RUN_SECONDS", 300)
 	if err != nil {
 		return Config{}, err
 	}

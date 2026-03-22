@@ -15,6 +15,6 @@ export async function GET() {
       process.env.LOCAL_RUNNER_SHARED_TOKEN?.trim() ||
       process.env.MOBILE_API_TOKEN?.trim() ||
       '',
-    timeoutSeconds: Number(process.env.LOCAL_RUNNER_TIMEOUT_SECONDS || '10'),
+    timeoutSeconds: Number(process.env.LOCAL_RUNNER_TIMEOUT_SECONDS || '300'),
   })
 }
