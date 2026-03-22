@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from 'react'
 interface Props {
   assignmentTitle: string
   code: string
+  className?: string
+  terminalClassName?: string
 }
 
 interface RunnerSession {
@@ -70,7 +72,12 @@ function toAnsiCyan(text: string) {
   return `\x1b[36m${text}\x1b[0m`
 }
 
-export default function LocalRunnerTerminal({ assignmentTitle, code }: Props) {
+export default function LocalRunnerTerminal({
+  assignmentTitle,
+  code,
+  className = '',
+  terminalClassName = '',
+}: Props) {
   const terminalContainerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -420,13 +427,10 @@ export default function LocalRunnerTerminal({ assignmentTitle, code }: Props) {
   }
 
   return (
-    <div className="mt-6 rounded-lg bg-white shadow overflow-hidden">
+    <div className={`overflow-hidden rounded-lg bg-white shadow ${className}`}>
       <div className="bg-slate-900 px-4 py-3 text-white flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-medium">本机 Python 交互终端</div>
-          <div className="text-xs text-slate-300">
-            支持实时输出、input() 输入和停止当前运行
-          </div>
+          <div className="text-xs text-slate-300">运行终端</div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -449,6 +453,13 @@ export default function LocalRunnerTerminal({ assignmentTitle, code }: Props) {
             className="rounded bg-rose-600 px-4 py-2 text-sm hover:bg-rose-500 disabled:opacity-50"
           >
             停止
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            className="rounded bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+          >
+            清空
           </button>
         </div>
       </div>
@@ -492,20 +503,14 @@ export default function LocalRunnerTerminal({ assignmentTitle, code }: Props) {
 
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between text-sm">
-          <span className="text-gray-500">
+          {/* <span className="text-gray-500">
             运行过程中直接在终端区域输入内容，按回车发送给程序。
-          </span>
-          <button
-            type="button"
-            onClick={handleClear}
-            className="rounded bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
-          >
-            清空终端
-          </button>
+          </span> */}
+          
         </div>
         <div
           ref={terminalContainerRef}
-          className="local-runner-terminal rounded-lg border bg-slate-950 p-2"
+          className={`local-runner-terminal h-[300px] rounded-lg border bg-slate-950 p-2 ${terminalClassName}`}
         />
       </div>
     </div>
