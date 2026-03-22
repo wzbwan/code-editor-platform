@@ -25,7 +25,15 @@ export default function CodeEditorClient({ assignment }: Props) {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [requirementsCollapsed, setRequirementsCollapsed] = useState(false)
+  const [requirementWarning, setRequirementWarning] = useState(false)
   const submission = assignment.submissions?.[0]
+
+  const showRequirementWarning = () => {
+    setRequirementWarning(true)
+    window.setTimeout(() => {
+      setRequirementWarning(false)
+    }, 2000)
+  }
 
   const handleSubmit = async () => {
     if (!code.trim()) {
@@ -85,6 +93,11 @@ export default function CodeEditorClient({ assignment }: Props) {
             <div className="flex items-start justify-between gap-4 border-b bg-slate-900 px-5 py-4 text-white">
               <div>
                 <h1 className="mt-1 text-2xl font-bold">{assignment.title}</h1>
+                {requirementWarning && (
+                  <div className="mt-3 inline-flex rounded-lg bg-rose-500 px-3 py-1 text-xs text-white">
+                    作业要求禁止复制
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -100,7 +113,21 @@ export default function CodeEditorClient({ assignment }: Props) {
               </div>
             ) : (
               <div className="h-full max-h-[calc(100vh-18rem)] overflow-y-auto p-5 lg:max-h-[calc(38vh-1rem)]">
-                <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+                <pre
+                  onCopy={(event) => {
+                    event.preventDefault()
+                    showRequirementWarning()
+                  }}
+                  onCut={(event) => {
+                    event.preventDefault()
+                    showRequirementWarning()
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    showRequirementWarning()
+                  }}
+                  className="select-none whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-700"
+                >
                   {assignment.description}
                 </pre>
                 {submission?.score !== null && submission?.score !== undefined && (
