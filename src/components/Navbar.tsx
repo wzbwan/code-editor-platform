@@ -50,9 +50,9 @@ export default function Navbar() {
           ) : (
             <>
               <Link href="/login" className="hover:text-gray-300">登录</Link>
-              <Link href="/register" className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
+              {/* <Link href="/register" className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
                 注册
-              </Link>
+              </Link> */}
             </>
           )}
         </div>
