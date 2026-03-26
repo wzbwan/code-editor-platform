@@ -67,12 +67,12 @@ export default function LoginPage() {
         >
           {loading ? '登录中...' : '登录'}
         </button>
-        <p className="mt-4 text-center text-sm text-gray-600">
+        {/* <p className="mt-4 text-center text-sm text-gray-600">
           没有账号？{' '}
           <Link href="/register" className="text-blue-600 hover:underline">
             注册
           </Link>
-        </p>
+        </p> */}
         {/* <div className="mt-6 p-4 bg-gray-50 rounded text-sm text-gray-600"> */}
           {/* <p className="font-medium mb-2">测试账号：</p> */}
           {/* <p>教师: teacher / 123456</p>
