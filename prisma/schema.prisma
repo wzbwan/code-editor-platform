@@ -33,6 +33,7 @@ model Assignment {
   id          String   @id @default(cuid())
   title       String
   description String
+  defaultCode String?
   dueDate     DateTime?
   status      String   @default("ACTIVE")
   createdAt   DateTime @default(now())

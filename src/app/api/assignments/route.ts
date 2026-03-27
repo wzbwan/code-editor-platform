@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { title, description, dueDate, status } = body
+  const { title, description, defaultCode, dueDate, status } = body
 
   if (!title || !description) {
     return NextResponse.json({ error: '缺少必填字段' }, { status: 400 })
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     data: {
       title,
       description,
+      defaultCode: String(defaultCode ?? '').trim() || null,
       dueDate: dueDate ? new Date(dueDate) : null,
       status: status || ASSIGNMENT_STATUS.ACTIVE,
       teacherId: session.user.id,
@@ -87,7 +88,7 @@ export async function PUT(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { id, title, description, dueDate, status } = body
+  const { id, title, description, defaultCode, dueDate, status } = body
 
   if (!id) {
     return NextResponse.json({ error: '缺少作业ID' }, { status: 400 })
@@ -104,6 +105,7 @@ export async function PUT(request: NextRequest) {
   const data: {
     title?: string
     description?: string
+    defaultCode?: string | null
     dueDate?: Date | null
     status?: string
   } = {}
@@ -113,6 +115,9 @@ export async function PUT(request: NextRequest) {
   }
   if (description !== undefined) {
     data.description = description
+  }
+  if (defaultCode !== undefined) {
+    data.defaultCode = String(defaultCode).trim() || null
   }
   if (dueDate !== undefined) {
     data.dueDate = dueDate ? new Date(dueDate) : null

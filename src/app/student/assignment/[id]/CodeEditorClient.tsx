@@ -10,6 +10,7 @@ interface Assignment {
   id: string
   title: string
   description: string
+  defaultCode: string | null
   submissions: { id: string; code: string; score: number | null; feedback: string | null }[]
 }
 
@@ -20,7 +21,9 @@ interface Props {
 export default function CodeEditorClient({ assignment }: Props) {
   const router = useRouter()
   const [code, setCode] = useState(
-    assignment.submissions?.[0]?.code || '# 在此编写你的Python代码\n\ndef solution():\n    pass\n'
+    assignment.submissions?.[0]?.code ||
+      assignment.defaultCode ||
+      '# 在此编写你的Python代码\n\ndef solution():\n    pass\n'
   )
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')

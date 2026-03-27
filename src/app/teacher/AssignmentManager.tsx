@@ -8,6 +8,7 @@ interface Assignment {
   id: string
   title: string
   description: string
+  defaultCode: string | null
   dueDate: string | null
   status: string
   createdAt: string
@@ -21,6 +22,7 @@ interface Props {
 interface AssignmentForm {
   title: string
   description: string
+  defaultCode: string
   dueDate: string
   status: string
 }
@@ -32,6 +34,7 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
   const [form, setForm] = useState<AssignmentForm>({
     title: '',
     description: '',
+    defaultCode: '',
     dueDate: '',
     status: ASSIGNMENT_STATUS.ACTIVE,
   })
@@ -42,6 +45,7 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
     setForm({
       title: '',
       description: '',
+      defaultCode: '',
       dueDate: '',
       status: ASSIGNMENT_STATUS.ACTIVE,
     })
@@ -53,6 +57,7 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
     setForm({
       title: assignment.title,
       description: assignment.description,
+      defaultCode: assignment.defaultCode || '',
       dueDate: assignment.dueDate ? assignment.dueDate.split('T')[0] : '',
       status: assignment.status,
     })
@@ -168,6 +173,15 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg h-32"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">默认代码</label>
+              <textarea
+                value={form.defaultCode}
+                onChange={(e) => setForm({ ...form, defaultCode: e.target.value })}
+                className="h-48 w-full rounded-lg border px-3 py-2 font-mono text-sm"
+                placeholder="# 学生打开作业时默认看到的代码"
               />
             </div>
             <div>
