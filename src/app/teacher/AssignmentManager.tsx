@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ASSIGNMENT_STATUS } from '@/lib/constants'
+import CodeEditor from '@/components/CodeEditor'
 
 interface Assignment {
   id: string
@@ -177,11 +178,10 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">默认代码</label>
-              <textarea
-                value={form.defaultCode}
-                onChange={(e) => setForm({ ...form, defaultCode: e.target.value })}
-                className="h-48 w-full rounded-lg border px-3 py-2 font-mono text-sm"
-                placeholder="# 学生打开作业时默认看到的代码"
+              <CodeEditor
+                code={form.defaultCode}
+                onChange={(defaultCode) => setForm({ ...form, defaultCode })}
+                className="min-h-[420px]"
               />
             </div>
             <div>
