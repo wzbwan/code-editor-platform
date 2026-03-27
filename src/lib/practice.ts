@@ -732,6 +732,34 @@ export async function getTeacherPracticeSessionView(teacherId: string, sessionId
   }
 }
 
+export async function deletePracticeSession(teacherId: string, sessionId: string) {
+  const session = await prisma.practiceSession.findFirst({
+    where: {
+      id: sessionId,
+      teacherId,
+    },
+    include: {
+      _count: {
+        select: {
+          responses: true,
+        },
+      },
+    },
+  })
+
+  if (!session) {
+    throw new Error('练习会话不存在')
+  }
+
+  if (session._count.responses > 0) {
+    throw new Error('已有学生答题记录，不能删除该练习')
+  }
+
+  await prisma.practiceSession.delete({
+    where: { id: session.id },
+  })
+}
+
 export async function applyTeacherPracticeAction(
   teacherId: string,
   sessionId: string,

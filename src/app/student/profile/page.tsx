@@ -61,7 +61,6 @@ export default async function StudentProfilePage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">个人中心</h1>
-          <p className="mt-1 text-sm text-gray-500">查看积分、批阅结果，并维护登录密码</p>
         </div>
         <Link href="/student" className="text-blue-600 hover:underline">
           返回作业列表
@@ -158,7 +157,6 @@ export default async function StudentProfilePage() {
           <div className="rounded-lg bg-white p-6 shadow">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">作业情况</h2>
-              <span className="text-sm text-gray-500">包含评分与评语</span>
             </div>
             {assignments.length === 0 ? (
               <div className="text-sm text-gray-500">暂无作业</div>
@@ -199,8 +197,11 @@ export default async function StudentProfilePage() {
                               ? ` / 截止时间：${new Date(assignment.dueDate).toLocaleString()}`
                               : ''}
                           </div>
-                          <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">
+                          {/* <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">
                             {assignment.description}
+                          </p> */}
+                          <p className="whitespace-pre-wrap text-gray-700">
+                            评语：{submission.feedback || '暂无评语'}
                           </p>
                         </div>
 
@@ -220,9 +221,7 @@ export default async function StudentProfilePage() {
                                   <span className="text-amber-600">待批阅</span>
                                 )}
                               </p>
-                              <p className="whitespace-pre-wrap text-gray-700">
-                                评语：{submission.feedback || '暂无评语'}
-                              </p>
+                              
                               {submission.reviewedAt && (
                                 <p className="text-gray-500">
                                   批阅时间：{new Date(submission.reviewedAt).toLocaleString()}

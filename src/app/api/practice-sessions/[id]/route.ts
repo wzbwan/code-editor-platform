@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth-options'
 import {
   applyTeacherPracticeAction,
+  deletePracticeSession,
   getTeacherPracticeSessionView,
 } from '@/lib/practice'
 
@@ -46,6 +47,25 @@ export async function PUT(request: NextRequest, { params }: Props) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '操作失败' },
+      { status: 400 }
+    )
+  }
+}
+
+export async function DELETE(_: NextRequest, { params }: Props) {
+  const session = await getServerSession(authOptions)
+  if (!session || session.user.role !== 'TEACHER') {
+    return NextResponse.json({ error: '未授权' }, { status: 401 })
+  }
+
+  const { id } = await params
+
+  try {
+    await deletePracticeSession(session.user.id, id)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '删除练习失败' },
       { status: 400 }
     )
   }

@@ -67,6 +67,7 @@ export default function QuizManager({
   const [paperDeletingId, setPaperDeletingId] = useState('')
   const [paperImporting, setPaperImporting] = useState(false)
   const [sessionCreating, setSessionCreating] = useState(false)
+  const [sessionDeletingId, setSessionDeletingId] = useState('')
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([])
   const [paperTitle, setPaperTitle] = useState('')
   const [paperDescription, setPaperDescription] = useState('')
@@ -306,6 +307,34 @@ export default function QuizManager({
       router.refresh()
     } finally {
       setPaperDeletingId('')
+    }
+  }
+
+  const handleDeleteSession = async (practiceSession: PracticeSession) => {
+    if (
+      !window.confirm(
+        `确认删除练习“${practiceSession.paper.title}”吗？仅当没有学生答题记录时才允许删除。`
+      )
+    ) {
+      return
+    }
+
+    setSessionDeletingId(practiceSession.id)
+
+    try {
+      const res = await fetch(`/api/practice-sessions/${encodeURIComponent(practiceSession.id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '删除练习失败')
+        return
+      }
+
+      router.refresh()
+    } finally {
+      setSessionDeletingId('')
     }
   }
 
@@ -657,6 +686,16 @@ export default function QuizManager({
                     >
                       进入控制台
                     </Link>
+                    {practiceSession._count.responses === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteSession(practiceSession)}
+                        disabled={sessionDeletingId === practiceSession.id}
+                        className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {sessionDeletingId === practiceSession.id ? '删除中...' : '删除练习'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
