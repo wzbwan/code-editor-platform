@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
+import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
 
 const UNASSIGNED_CLASS_FILTER = '__UNASSIGNED__'
 
@@ -81,10 +82,6 @@ interface Props {
   assignments: AssignmentOption[]
   initialSelectedAssignmentId: string
   initialStatusData: StatusResponse | null
-}
-
-function formatDelta(delta: number) {
-  return delta > 0 ? `+${delta}` : `${delta}`
 }
 
 export default function SubmissionStatusBoard({
@@ -343,7 +340,7 @@ export default function SubmissionStatusBoard({
                       <p>姓名：{detail.student.name}</p>
                       <p>学号：{detail.student.username}</p>
                       <p>班级：{detail.student.className || '未分班'}</p>
-                      <p>当前积分：{detail.student.pointBalance}</p>
+                      <p>当前积分：{formatOneDecimal(detail.student.pointBalance)}</p>
                       <p>
                         注册时间：{new Date(detail.student.createdAt).toLocaleDateString()}
                       </p>
@@ -404,7 +401,7 @@ export default function SubmissionStatusBoard({
                                     : 'bg-red-100 text-red-700'
                                 }`}
                               >
-                                {formatDelta(record.delta)}
+                                {formatSignedOneDecimal(record.delta)}
                               </span>
                             </div>
                           </div>

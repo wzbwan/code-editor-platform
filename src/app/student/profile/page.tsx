@@ -1,12 +1,9 @@
 import Link from 'next/link'
 import { requireStudent } from '@/lib/auth'
+import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
 import { listStudentPointRecords } from '@/lib/student-points'
 import { prisma } from '@/lib/prisma'
 import PasswordForm from './PasswordForm'
-
-function formatDelta(delta: number) {
-  return delta > 0 ? `+${delta}` : `${delta}`
-}
 
 export default async function StudentProfilePage() {
   const user = await requireStudent()
@@ -84,7 +81,9 @@ export default async function StudentProfilePage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-blue-50 p-4">
                 <div className="text-sm text-blue-600">当前积分</div>
-                <div className="mt-2 text-3xl font-bold text-blue-700">{student.pointBalance}</div>
+                <div className="mt-2 text-3xl font-bold text-blue-700">
+                  {formatOneDecimal(student.pointBalance)}
+                </div>
               </div>
               <div className="rounded-lg bg-emerald-50 p-4">
                 <div className="text-sm text-emerald-600">已提交作业</div>
@@ -133,7 +132,7 @@ export default async function StudentProfilePage() {
                                 : 'bg-red-100 text-red-700'
                             }`}
                           >
-                            {formatDelta(record.delta)}
+                            {formatSignedOneDecimal(record.delta)}
                           </span>
                         </div>
                         <p className="text-sm text-gray-500">

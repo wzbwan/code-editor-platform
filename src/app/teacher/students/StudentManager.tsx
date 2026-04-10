@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
 import {
   buildStudentSearchIndex,
   matchesStudentQuery,
@@ -68,10 +69,6 @@ function enrichStudent(student: Student): StudentWithSearchIndex {
     ...student,
     searchIndex: buildStudentSearchIndex(student),
   }
-}
-
-function formatDelta(delta: number) {
-  return delta > 0 ? `+${delta}` : `${delta}`
 }
 
 export default function StudentManager({
@@ -492,7 +489,7 @@ export default function StudentManager({
                           : 'bg-red-100 text-red-700'
                       }`}
                     >
-                      {student.pointBalance}
+                      {formatOneDecimal(student.pointBalance)}
                     </span>
                   </td>
                   <td className="px-6 py-4">{student._count.submissions}</td>
@@ -575,7 +572,7 @@ export default function StudentManager({
                           : 'bg-red-100 text-red-700'
                       }`}
                     >
-                      {formatDelta(record.delta)}
+                      {formatSignedOneDecimal(record.delta)}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600">{record.reason}</p>

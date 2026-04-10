@@ -15,6 +15,7 @@ import {
   shuffleArray,
   type ParsedQuestionInput,
 } from '@/lib/quiz'
+import { roundToOneDecimal } from '@/lib/point-format'
 import { createStudentPointRecord } from '@/lib/student-points'
 
 function normalizeClassName(value?: string | null) {
@@ -807,7 +808,7 @@ export async function applyTeacherPracticeAction(
         ? calculateQuestionBonusMultiplier(rank, totalStudents)
         : 0
       const awardedPointDelta = multiplier
-        ? Math.round(currentQuestion.score * multiplier)
+        ? roundToOneDecimal(currentQuestion.score * multiplier)
         : 0
 
       await prisma.practiceResponse.update({
@@ -1252,7 +1253,7 @@ export async function submitPaperPracticeAnswers(
         ? 1.2
         : 1
       : 1
-  const finalScore = Math.round(rawScore * bonusMultiplier)
+  const finalScore = roundToOneDecimal(rawScore * bonusMultiplier)
   const awardedPointDelta = finalScore
 
   await prisma.$transaction(async (tx) => {

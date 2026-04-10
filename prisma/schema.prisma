@@ -14,7 +14,7 @@ model User {
   name      String
   className String?
   role      String   @default("STUDENT")
-  pointBalance Int   @default(0)
+  pointBalance Float @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -68,7 +68,7 @@ model StudentPointRecord {
   operatorId      String?
   operator        User?    @relation("OperatorPointRecords", fields: [operatorId], references: [id], onDelete: SetNull)
   operatorLabel   String?
-  delta           Int
+  delta           Float
   reason          String
   occurredAt      DateTime
   source          String   @default("WEB")
@@ -176,9 +176,9 @@ model PracticeSessionStudent {
   startedAt       DateTime?
   submittedAt     DateTime?
   rawScore        Int?
-  finalScore      Int?
+  finalScore      Float?
   bonusMultiplier Float?
-  awardedPointDelta Int?
+  awardedPointDelta Float?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -198,7 +198,7 @@ model PracticeResponse {
   answer           String
   isCorrect        Boolean?
   awardedScore     Int?
-  awardedPointDelta Int?
+  awardedPointDelta Float?
   settledAt        DateTime?
   submittedAt      DateTime @default(now())
   createdAt        DateTime @default(now())

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { formatOneDecimal } from '@/lib/point-format'
 
 interface QuestionItem {
   id: string
@@ -324,8 +325,11 @@ export default function StudentPracticeClient() {
         </div>
         {practice.hasSubmitted && (
           <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700">
-            已交卷。原始分：{practice.rawScore ?? 0}，最终分：{practice.finalScore ?? 0}
-            {practice.bonusMultiplier ? `（加成 ${practice.bonusMultiplier}x）` : ''}
+            已交卷。原始分：{practice.rawScore ?? 0}，最终分：
+            {formatOneDecimal(practice.finalScore ?? 0)}
+            {practice.bonusMultiplier
+              ? `（加成 ${formatOneDecimal(practice.bonusMultiplier)}x）`
+              : ''}
           </div>
         )}
       </div>

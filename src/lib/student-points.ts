@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { POINT_SOURCE } from '@/lib/constants'
+import { roundToOneDecimal } from '@/lib/point-format'
 
 type PointSource = (typeof POINT_SOURCE)[keyof typeof POINT_SOURCE]
 
@@ -18,12 +19,13 @@ export async function createStudentPointRecord(
   input: CreateStudentPointRecordInput
 ) {
   const reason = input.reason.trim()
+  const delta = roundToOneDecimal(Number(input.delta))
   if (!reason) {
     throw new Error('请填写理由')
   }
 
-  if (!Number.isInteger(input.delta) || input.delta === 0) {
-    throw new Error('分值必须是非 0 整数')
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error('分值必须是非 0 数字')
   }
 
   if (!input.studentId && !input.username?.trim()) {
@@ -65,7 +67,7 @@ export async function createStudentPointRecord(
       where: { id: student.id },
       data: {
         pointBalance: {
-          increment: input.delta,
+          increment: delta,
         },
       },
       select: {
@@ -82,7 +84,7 @@ export async function createStudentPointRecord(
         studentUsername: student.username,
         operatorId: input.operatorId ?? null,
         operatorLabel: input.operatorLabel?.trim() || null,
-        delta: input.delta,
+        delta,
         reason,
         occurredAt: input.occurredAt ?? new Date(),
         source: input.source ?? POINT_SOURCE.WEB,

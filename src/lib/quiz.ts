@@ -288,23 +288,45 @@ export function calculateQuestionBonusMultiplier(rank: number, totalStudents: nu
     return 0
   }
 
-  const ratio = rank / totalStudents
-  if (ratio <= 0.1) {
+  // Use cumulative headcount cutoffs so small classes still produce a first-tier winner.
+  const top10Cutoff = Math.max(1, Math.ceil(totalStudents * 0.1))
+  const top20Cutoff = Math.max(top10Cutoff, Math.ceil(totalStudents * 0.2))
+  const top30Cutoff = Math.max(top20Cutoff, Math.ceil(totalStudents * 0.3))
+  const top40Cutoff = Math.max(top30Cutoff, Math.ceil(totalStudents * 0.4))
+  const top50Cutoff = Math.max(top40Cutoff, Math.ceil(totalStudents * 0.5))
+  const top60Cutoff = Math.max(top50Cutoff, Math.ceil(totalStudents * 0.6))
+  const top70Cutoff = Math.max(top60Cutoff, Math.ceil(totalStudents * 0.7))
+  const top80Cutoff = Math.max(top70Cutoff, Math.ceil(totalStudents * 0.8))
+  const top90Cutoff = Math.max(top80Cutoff, Math.ceil(totalStudents * 0.9))
+
+  if (rank <= top10Cutoff) {
+    return 1.5
+  }
+  if (rank <= top20Cutoff) {
+    return 1.4
+  }
+  if (rank <= top30Cutoff) {
+    return 1.3
+  }
+  if (rank <= top40Cutoff) {
     return 1.2
   }
-  if (ratio <= 0.2) {
+  if (rank <= top50Cutoff) {
     return 1.1
   }
-  if (ratio <= 0.5) {
+  if (rank <= top60Cutoff) {
     return 1
   }
-  if (ratio <= 0.6) {
+  if (rank <= top70Cutoff) {
     return 0.7
   }
-  if (ratio <= 0.7) {
+  if (rank <= top80Cutoff) {
     return 0.5
   }
-  return 0
+  if (rank <= top90Cutoff) {
+    return 0.4
+  }
+  return 0.3
 }
 
 export function serializeJson(value: unknown) {
