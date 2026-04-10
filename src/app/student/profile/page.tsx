@@ -201,7 +201,7 @@ export default async function StudentProfilePage() {
                             {assignment.description}
                           </p> */}
                           <p className="whitespace-pre-wrap text-gray-700">
-                            评语：{submission.feedback || '暂无评语'}
+                            评语：{submission?.feedback || '暂无评语'}
                           </p>
                         </div>
 
