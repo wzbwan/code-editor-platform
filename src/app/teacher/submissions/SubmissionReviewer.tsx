@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
+import { formatAppDateTime } from '@/lib/date-format'
 
 interface Submission {
   id: string
@@ -259,7 +260,7 @@ export default function SubmissionReviewer({
                   </div>
                   <div className="flex justify-between items-center mt-2 text-sm">
                     <span className="text-gray-400">
-                      {new Date(submission.submittedAt).toLocaleString()}
+                      {formatAppDateTime(submission.submittedAt)}
                     </span>
                     {submission.score !== null ? (
                       <span className="text-green-600 font-medium">{submission.score}分</span>
@@ -283,7 +284,7 @@ export default function SubmissionReviewer({
                       : ''}
                   </span>
                   <span className="text-sm text-gray-500">
-                    提交时间: {new Date(selectedSubmission.submittedAt).toLocaleString()}
+                    提交时间: {formatAppDateTime(selectedSubmission.submittedAt)}
                   </span>
                 </div>
                 <CodeEditor

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ASSIGNMENT_STATUS } from '@/lib/constants'
+import { formatAppDate } from '@/lib/date-format'
 import CodeEditor from '@/components/CodeEditor'
 
 interface Assignment {
@@ -247,9 +248,9 @@ export default function AssignmentManager({ assignments: initialAssignments }: P
                   <p className="text-gray-600 mt-2 line-clamp-2">{assignment.description}</p>
                   <div className="flex gap-4 mt-3 text-sm text-gray-500">
                     <span>提交数: {assignment._count.submissions}</span>
-                    <span>创建: {new Date(assignment.createdAt).toLocaleDateString()}</span>
+                    <span>创建: {formatAppDate(assignment.createdAt)}</span>
                     {assignment.dueDate && (
-                      <span>截止: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                      <span>截止: {formatAppDate(assignment.dueDate)}</span>
                     )}
                   </div>
                 </div>

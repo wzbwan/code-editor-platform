@@ -27,6 +27,9 @@ model User {
   teachingPracticeSessions PracticeSession[] @relation("TeacherPracticeSessions")
   studentPracticeSessions PracticeSessionStudent[] @relation("StudentPracticeSessions")
   practiceResponses PracticeResponse[] @relation("StudentPracticeResponses")
+  challengeProgresses ChallengeProgress[] @relation("StudentChallengeProgresses")
+  challengeSubmissions ChallengeSubmission[] @relation("StudentChallengeSubmissions")
+  pet StudentPet?
 }
 
 model Assignment {
@@ -76,6 +79,84 @@ model StudentPointRecord {
 
   @@index([studentId, occurredAt])
   @@index([occurredAt])
+}
+
+model StudentPet {
+  id         String   @id @default(cuid())
+  studentId  String   @unique
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  speciesKey String
+  nickname   String?
+  level      Int      @default(1)
+  exp        Int      @default(0)
+  currentHp  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  equipmentSlots StudentPetEquipmentSlot[]
+  skillSlots     StudentPetSkillSlot[]
+  inventorySlots StudentPetInventorySlot[]
+  expRecords     StudentPetExpRecord[]
+
+  @@index([speciesKey])
+}
+
+model StudentPetEquipmentSlot {
+  id            String   @id @default(cuid())
+  petId         String
+  pet           StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  slotIndex     Int
+  equipmentKey  String?
+  equipmentName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([petId, slotIndex])
+}
+
+model StudentPetSkillSlot {
+  id         String   @id @default(cuid())
+  petId      String
+  pet        StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  slotIndex  Int
+  skillKey   String?
+  skillName  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([petId, slotIndex])
+}
+
+model StudentPetInventorySlot {
+  id        String   @id @default(cuid())
+  petId     String
+  pet       StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  slotIndex Int
+  itemKey   String?
+  itemName  String?
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([petId, slotIndex])
+}
+
+model StudentPetExpRecord {
+  id              String   @id @default(cuid())
+  petId           String
+  pet             StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  expDelta        Int
+  pointDelta      Float?
+  reason          String
+  source          String   @default("POINT")
+  levelBefore     Int
+  levelAfter      Int
+  expBefore       Int
+  expAfter        Int
+  occurredAt      DateTime
+  createdAt       DateTime @default(now())
+
+  @@index([petId, occurredAt])
 }
 
 model QuestionBankItem {
@@ -214,4 +295,72 @@ model PracticeResponse {
 
   @@unique([sessionId, studentId, paperQuestionId])
   @@index([paperQuestionId, submittedAt])
+}
+
+model ChallengeChapterUnlock {
+  id         String   @id @default(cuid())
+  className  String
+  chapterKey String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([className, chapterKey])
+  @@index([className])
+}
+
+model ChallengeLevelUnlock {
+  id         String   @id @default(cuid())
+  className  String
+  chapterKey String
+  levelKey   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([className, chapterKey, levelKey])
+  @@index([className, chapterKey])
+}
+
+model ChallengeProgress {
+  id                 String   @id @default(cuid())
+  status             String   @default("IN_PROGRESS")
+  attemptCount       Int      @default(0)
+  latestCode         String?
+  latestJudgeMessage String?
+  latestStdout       String?
+  latestStderr       String?
+  latestSubmittedAt  DateTime?
+  firstPassedAt      DateTime?
+  passedAt           DateTime?
+  awardedPoints      Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  studentId  String
+  student    User     @relation("StudentChallengeProgresses", fields: [studentId], references: [id], onDelete: Cascade)
+  chapterKey String
+  levelKey   String
+
+  @@unique([studentId, chapterKey, levelKey])
+  @@index([studentId, updatedAt])
+  @@index([chapterKey, levelKey])
+}
+
+model ChallengeSubmission {
+  id            String   @id @default(cuid())
+  code          String
+  isPassed      Boolean
+  judgeMessage  String
+  stdout        String?
+  stderr        String?
+  pointsAwarded Float    @default(0)
+  submittedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  studentId  String
+  student    User     @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+  chapterKey String
+  levelKey   String
+
+  @@index([studentId, submittedAt])
+  @@index([chapterKey, levelKey, submittedAt])
 }

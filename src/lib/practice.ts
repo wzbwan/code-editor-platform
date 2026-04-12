@@ -16,7 +16,7 @@ import {
   type ParsedQuestionInput,
 } from '@/lib/quiz'
 import { roundToOneDecimal } from '@/lib/point-format'
-import { createStudentPointRecord } from '@/lib/student-points'
+import { createStudentPointRecord, createStudentPointRecordWithTx } from '@/lib/student-points'
 
 function normalizeClassName(value?: string | null) {
   return value?.trim() || ''
@@ -1281,25 +1281,13 @@ export async function submitPaperPracticeAnswers(
     })
 
     if (awardedPointDelta > 0) {
-      await tx.user.update({
-        where: { id: student.id },
-        data: {
-          pointBalance: {
-            increment: awardedPointDelta,
-          },
-        },
-      })
-
-      await tx.studentPointRecord.create({
-        data: {
-          studentId: student.id,
-          studentUsername: student.username,
-          operatorId: session.teacherId,
-          delta: awardedPointDelta,
-          reason: `整卷练习《${session.paper.title}》得分奖励`,
-          occurredAt: new Date(),
-          source: 'WEB',
-        },
+      await createStudentPointRecordWithTx(tx, {
+        studentId: student.id,
+        delta: awardedPointDelta,
+        reason: `整卷练习《${session.paper.title}》得分奖励`,
+        occurredAt: new Date(),
+        source: 'WEB',
+        operatorId: session.teacherId,
       })
     }
   })

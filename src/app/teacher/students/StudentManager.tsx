@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { formatAppDate, formatAppDateTime } from '@/lib/date-format'
 import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
 import {
   buildStudentSearchIndex,
@@ -494,7 +495,7 @@ export default function StudentManager({
                   </td>
                   <td className="px-6 py-4">{student._count.submissions}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(student.createdAt).toLocaleDateString()}
+                    {formatAppDate(student.createdAt)}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
@@ -579,7 +580,7 @@ export default function StudentManager({
                 </div>
                 <div className="text-sm text-gray-500">
                   <div>
-                    {new Date(record.occurredAt).toLocaleString()}
+                    {formatAppDateTime(record.occurredAt)}
                   </div>
                   <div>
                     来源：

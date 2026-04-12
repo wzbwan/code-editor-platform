@@ -1,14 +1,16 @@
 import Link from 'next/link'
 import { requireStudent } from '@/lib/auth'
 import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
+import { getStudentPetProfile } from '@/lib/pets/service'
 import { listStudentPointRecords } from '@/lib/student-points'
 import { prisma } from '@/lib/prisma'
 import PasswordForm from './PasswordForm'
+import StudentPetPanel from './StudentPetPanel'
 
 export default async function StudentProfilePage() {
   const user = await requireStudent()
 
-  const [student, pointRecords, assignments] = await Promise.all([
+  const [student, pointRecords, petProfile, assignments] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: {
@@ -21,6 +23,7 @@ export default async function StudentProfilePage() {
       },
     }),
     listStudentPointRecords(user.id, 50),
+    getStudentPetProfile(user.id),
     prisma.assignment.findMany({
       include: {
         teacher: {
@@ -62,6 +65,13 @@ export default async function StudentProfilePage() {
         <Link href="/student" className="text-blue-600 hover:underline">
           返回作业列表
         </Link>
+      </div>
+
+      <div className="mb-6">
+        <StudentPetPanel
+          pet={petProfile.pet}
+          availablePets={petProfile.availablePets}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

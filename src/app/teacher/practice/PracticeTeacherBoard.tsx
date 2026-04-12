@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { PRACTICE_MODES, PRACTICE_STATUSES, UNASSIGNED_CLASS_FILTER } from '@/lib/constants'
+import { formatAppDateTime } from '@/lib/date-format'
 import { getModeLabel, getStatusLabel } from '@/lib/quiz'
 
 interface Props {
@@ -253,7 +254,7 @@ export default function PracticeTeacherBoard({ sessionId, initialData }: Props) 
                     </div>
                     {submittedAt && (
                       <div className="mt-1 text-sm text-slate-500">
-                        提交时间：{new Date(submittedAt).toLocaleString()}
+                        提交时间：{formatAppDateTime(submittedAt)}
                       </div>
                     )}
                   </div>

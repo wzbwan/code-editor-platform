@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
+import { formatAppDate, formatAppDateTime } from '@/lib/date-format'
 import { formatOneDecimal, formatSignedOneDecimal } from '@/lib/point-format'
 
 const UNASSIGNED_CLASS_FILTER = '__UNASSIGNED__'
@@ -290,7 +291,7 @@ export default function SubmissionStatusBoard({
                   <div>
                     提交时间：
                     {student.submittedAt
-                      ? new Date(student.submittedAt).toLocaleString()
+                      ? formatAppDateTime(student.submittedAt)
                       : '未提交'}
                   </div>
                   <div>
@@ -342,7 +343,7 @@ export default function SubmissionStatusBoard({
                       <p>班级：{detail.student.className || '未分班'}</p>
                       <p>当前积分：{formatOneDecimal(detail.student.pointBalance)}</p>
                       <p>
-                        注册时间：{new Date(detail.student.createdAt).toLocaleDateString()}
+                        注册时间：{formatAppDate(detail.student.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -353,7 +354,7 @@ export default function SubmissionStatusBoard({
                       <div className="space-y-2 text-sm text-slate-700">
                         <p>
                           提交时间：
-                          {new Date(detail.submission.submittedAt).toLocaleString()}
+                          {formatAppDateTime(detail.submission.submittedAt)}
                         </p>
                         <p>
                           评分：
@@ -365,7 +366,7 @@ export default function SubmissionStatusBoard({
                         <p>
                           批阅时间：
                           {detail.submission.reviewedAt
-                            ? new Date(detail.submission.reviewedAt).toLocaleString()
+                            ? formatAppDateTime(detail.submission.reviewedAt)
                             : '未批阅'}
                         </p>
                       </div>
@@ -391,7 +392,7 @@ export default function SubmissionStatusBoard({
                                   {record.reason}
                                 </div>
                                 <div className="mt-1 text-xs text-slate-500">
-                                  {new Date(record.occurredAt).toLocaleString()}
+                                  {formatAppDateTime(record.occurredAt)}
                                 </div>
                               </div>
                               <span
@@ -425,7 +426,7 @@ export default function SubmissionStatusBoard({
                       <p>
                         截止时间：
                         {detail.assignment.dueDate
-                          ? new Date(detail.assignment.dueDate).toLocaleString()
+                          ? formatAppDateTime(detail.assignment.dueDate)
                           : '未设置'}
                       </p>
                     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { formatAppDate } from '@/lib/date-format'
 
 interface Assignment {
   id: string
@@ -42,9 +43,9 @@ export default function AssignmentList({ assignments }: Props) {
                 <h3 className="font-semibold text-lg">{assignment.title}</h3>
                 <p className="text-gray-600 mt-2 line-clamp-2">{assignment.description}</p>
                 <div className="flex gap-4 mt-3 text-sm text-gray-500">
-                  <span>创建时间: {new Date(assignment.createdAt).toLocaleDateString()}</span>
+                  <span>创建时间: {formatAppDate(assignment.createdAt)}</span>
                   {assignment.dueDate && (
-                    <span>截止日期: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                    <span>截止日期: {formatAppDate(assignment.dueDate)}</span>
                   )}
                 </div>
               </div>

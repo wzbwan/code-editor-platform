@@ -6,6 +6,7 @@ export const ASSIGNMENT_STATUS = {
 export const POINT_SOURCE = {
   WEB: 'WEB',
   MOBILE_API: 'MOBILE_API',
+  CHALLENGE: 'CHALLENGE',
 } as const
 
 export const QUESTION_TYPES = {

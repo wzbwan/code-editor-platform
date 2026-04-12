@@ -29,6 +29,8 @@ export default function Navbar() {
               {session.user?.role === 'TEACHER' ? (
                 <>
                   <Link href="/teacher" className="hover:text-gray-300">作业管理</Link>
+                  <Link href="/teacher/challenges" className="hover:text-gray-300">代码闯关</Link>
+                  <Link href="/teacher/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/teacher/questions" className="hover:text-gray-300">试题管理</Link>
                   <Link href="/teacher/students" className="hover:text-gray-300">学生管理</Link>
                   <Link href="/teacher/submissions" className="hover:text-gray-300">批阅作业</Link>
@@ -36,7 +38,9 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link href="/student" className="hover:text-gray-300">我的作业</Link>
+                  <Link href="/student/challenges" className="hover:text-gray-300">代码闯关</Link>
                   <Link href="/student/practice" className="hover:text-gray-300">答题练习</Link>
+                  <Link href="/student/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/student/profile" className="hover:text-gray-300">个人中心</Link>
                 </>
               )}
