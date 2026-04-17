@@ -388,37 +388,173 @@ export async function listChallengeClassOptions() {
   return Array.from(new Set(students.map((item) => normalizeClassName(item.className)).filter(Boolean)))
 }
 
-export async function getChallengeUnlockManagerData(className: string) {
+export async function getTeacherChallengeTaskListData(className: string) {
   const normalizedClassName = normalizeClassName(className)
-  const [chapterUnlocks, levelUnlocks] = await Promise.all([
+  const [students, chapterUnlocks, passedProgresses] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: 'STUDENT',
+        className: normalizedClassName,
+      },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+      },
+      orderBy: [{ name: 'asc' }, { username: 'asc' }],
+    }),
     prisma.challengeChapterUnlock.findMany({
       where: { className: normalizedClassName },
       select: { chapterKey: true },
     }),
-    prisma.challengeLevelUnlock.findMany({
-      where: { className: normalizedClassName },
-      select: { chapterKey: true, levelKey: true },
+    prisma.challengeProgress.findMany({
+      where: {
+        status: 'PASSED',
+        student: {
+          role: 'STUDENT',
+          className: normalizedClassName,
+        },
+      },
+      select: {
+        studentId: true,
+        chapterKey: true,
+        levelKey: true,
+      },
     }),
   ])
 
   const unlockedChapters = new Set(chapterUnlocks.map((item) => item.chapterKey))
-  const unlockedLevels = new Set(levelUnlocks.map((item) => `${item.chapterKey}:${item.levelKey}`))
+  const chapterPassedStudentSetMap = new Map<string, Set<string>>()
+
+  for (const progress of passedProgresses) {
+    const studentIds = chapterPassedStudentSetMap.get(progress.chapterKey) || new Set<string>()
+    studentIds.add(progress.studentId)
+    chapterPassedStudentSetMap.set(progress.chapterKey, studentIds)
+  }
 
   return {
     className: normalizedClassName,
+    totalStudents: students.length,
     chapters: getAllChallengeChapters().map((chapter) => ({
       key: chapter.key,
       title: chapter.title,
       description: chapter.description,
       theme: chapter.theme,
       isUnlocked: unlockedChapters.has(chapter.key),
+      levelCount: chapter.levels.length,
+      passedStudentCount: chapterPassedStudentSetMap.get(chapter.key)?.size || 0,
+    })),
+  }
+}
+
+export async function getChallengeUnlockManagerData(className: string, chapterKey: string) {
+  const normalizedClassName = normalizeClassName(className)
+  const chapter = getChallengeChapter(chapterKey)
+  if (!chapter) {
+    return null
+  }
+
+  const [students, chapterUnlock, levelUnlocks, passedProgresses] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: 'STUDENT',
+        className: normalizedClassName,
+      },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+      },
+      orderBy: [{ name: 'asc' }, { username: 'asc' }],
+    }),
+    prisma.challengeChapterUnlock.findUnique({
+      where: {
+        className_chapterKey: {
+          className: normalizedClassName,
+          chapterKey,
+        },
+      },
+      select: {
+        id: true,
+      },
+    }),
+    prisma.challengeLevelUnlock.findMany({
+      where: { className: normalizedClassName, chapterKey },
+      select: { levelKey: true },
+    }),
+    prisma.challengeProgress.findMany({
+      where: {
+        chapterKey,
+        status: 'PASSED',
+        student: {
+          role: 'STUDENT',
+          className: normalizedClassName,
+        },
+      },
+      select: {
+        studentId: true,
+        levelKey: true,
+      },
+    }),
+  ])
+
+  const unlockedLevels = new Set(levelUnlocks.map((item) => item.levelKey))
+  const passedLevelStudentSetMap = new Map<string, Set<string>>()
+  const studentPassedLevelSetMap = new Map<string, Set<string>>()
+
+  for (const progress of passedProgresses) {
+    const levelStudents = passedLevelStudentSetMap.get(progress.levelKey) || new Set<string>()
+    levelStudents.add(progress.studentId)
+    passedLevelStudentSetMap.set(progress.levelKey, levelStudents)
+
+    const studentLevels = studentPassedLevelSetMap.get(progress.studentId) || new Set<string>()
+    studentLevels.add(progress.levelKey)
+    studentPassedLevelSetMap.set(progress.studentId, studentLevels)
+  }
+
+  const totalLevels = chapter.levels.length
+  const studentRankings = students
+    .map((student) => {
+      const passedLevels = studentPassedLevelSetMap.get(student.id) || new Set<string>()
+      return {
+        id: student.id,
+        name: student.name,
+        username: student.username,
+        passedCount: passedLevels.size,
+        notPassedCount: Math.max(totalLevels - passedLevels.size, 0),
+        levelStatuses: chapter.levels.map((level) => ({
+          key: level.key,
+          title: level.title,
+          isPassed: passedLevels.has(level.key),
+        })),
+      }
+    })
+    .sort((left, right) => {
+      if (right.passedCount !== left.passedCount) {
+        return right.passedCount - left.passedCount
+      }
+      return left.username.localeCompare(right.username)
+    })
+
+  return {
+    className: normalizedClassName,
+    totalStudents: students.length,
+    chapter: {
+      key: chapter.key,
+      title: chapter.title,
+      description: chapter.description,
+      theme: chapter.theme,
+      isUnlocked: Boolean(chapterUnlock),
       levels: chapter.levels.map((level) => ({
         key: level.key,
         title: level.title,
         summary: level.summary,
-        isUnlocked: unlockedLevels.has(`${chapter.key}:${level.key}`),
+        isUnlocked: unlockedLevels.has(level.key),
+        passedCount: passedLevelStudentSetMap.get(level.key)?.size || 0,
+        totalStudents: students.length,
       })),
-    })),
+    },
+    studentRankings,
   }
 }
 
@@ -426,6 +562,7 @@ export async function saveChallengeUnlocks(input: {
   className: string
   chapterKeys: string[]
   levelKeys: Array<{ chapterKey: string; levelKey: string }>
+  scopeChapterKey?: string
 }) {
   const className = normalizeClassName(input.className)
   if (!className) {
@@ -436,6 +573,10 @@ export async function saveChallengeUnlocks(input: {
   const normalizedChapterKeys = Array.from(new Set(input.chapterKeys)).filter((item) =>
     validChapterKeys.has(item)
   )
+  const scopeChapterKey = input.scopeChapterKey?.trim()
+  if (scopeChapterKey && !validChapterKeys.has(scopeChapterKey)) {
+    throw new Error('闯关任务不存在')
+  }
 
   const normalizedLevelKeys = Array.from(
     new Map(
@@ -446,12 +587,21 @@ export async function saveChallengeUnlocks(input: {
   ).filter((item) => normalizedChapterKeys.includes(item.chapterKey))
 
   await prisma.$transaction(async (tx) => {
-    await tx.challengeChapterUnlock.deleteMany({
-      where: { className },
-    })
-    await tx.challengeLevelUnlock.deleteMany({
-      where: { className },
-    })
+    if (scopeChapterKey) {
+      await tx.challengeChapterUnlock.deleteMany({
+        where: { className, chapterKey: scopeChapterKey },
+      })
+      await tx.challengeLevelUnlock.deleteMany({
+        where: { className, chapterKey: scopeChapterKey },
+      })
+    } else {
+      await tx.challengeChapterUnlock.deleteMany({
+        where: { className },
+      })
+      await tx.challengeLevelUnlock.deleteMany({
+        where: { className },
+      })
+    }
 
     if (normalizedChapterKeys.length > 0) {
       await tx.challengeChapterUnlock.createMany({
@@ -473,5 +623,9 @@ export async function saveChallengeUnlocks(input: {
     }
   })
 
-  return getChallengeUnlockManagerData(className)
+  if (scopeChapterKey) {
+    return getChallengeUnlockManagerData(className, scopeChapterKey)
+  }
+
+  return getTeacherChallengeTaskListData(className)
 }

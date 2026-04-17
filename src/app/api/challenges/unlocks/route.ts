@@ -11,11 +11,18 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const className = searchParams.get('className')?.trim() || ''
+  const chapterKey = searchParams.get('chapterKey')?.trim() || ''
   if (!className) {
     return NextResponse.json({ error: '缺少班级' }, { status: 400 })
   }
+  if (!chapterKey) {
+    return NextResponse.json({ error: '缺少闯关任务' }, { status: 400 })
+  }
 
-  const data = await getChallengeUnlockManagerData(className)
+  const data = await getChallengeUnlockManagerData(className, chapterKey)
+  if (!data) {
+    return NextResponse.json({ error: '闯关任务不存在' }, { status: 404 })
+  }
   return NextResponse.json(data)
 }
 
@@ -32,9 +39,12 @@ export async function PUT(request: NextRequest) {
           className?: unknown
           chapterKeys?: unknown
           levelKeys?: unknown
+          scopeChapterKey?: unknown
         })
       : {}
   const className = typeof payload.className === 'string' ? payload.className.trim() : ''
+  const scopeChapterKey =
+    typeof payload.scopeChapterKey === 'string' ? payload.scopeChapterKey.trim() : ''
   const chapterKeys = Array.isArray(payload.chapterKeys)
     ? payload.chapterKeys.filter((item: unknown): item is string => typeof item === 'string')
     : []
@@ -58,6 +68,7 @@ export async function PUT(request: NextRequest) {
       className,
       chapterKeys,
       levelKeys,
+      scopeChapterKey: scopeChapterKey || undefined,
     })
 
     return NextResponse.json(data)
