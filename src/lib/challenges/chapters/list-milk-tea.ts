@@ -6,6 +6,46 @@ export const listMilkTeaChapter: ChallengeChapterDefinition = {
   theme: 'Python 列表',
   description:
     '你是奶茶店的小程序管理员，需要用 Python 列表快速处理订单、销量和巡店任务。',
+  helpDoc: {
+    title: '列表基础速查',
+    intro:
+      '这一章主要围绕 Python 列表的创建、索引、增删改查、统计与遍历。先理解“列表是有顺序、可修改、可重复”的数据结构，再进入闯关会更顺手。',
+    sections: [
+      {
+        title: '1. 列表是什么',
+        points: [
+          '列表用方括号定义，例如 [1, 2, 3]。',
+          '列表中的元素有顺序，可以通过索引访问。',
+          '列表可以存放重复元素，也可以同时存放多种类型的数据。',
+        ],
+        exampleTitle: '示例',
+        exampleCode: `cities = ['北京', '上海', '深圳']\nprint(cities[0])\nprint(cities[-1])`,
+      },
+      {
+        title: '2. 常见增删改查',
+        points: [
+          'append(x) 在末尾增加一个元素。',
+          'insert(i, x) 在指定位置插入元素。',
+          'remove(x) 删除指定元素，pop(i) 删除指定索引处的元素。',
+          '通过 list[i] = 新值 可以直接修改元素。',
+        ],
+        exampleTitle: '示例',
+        exampleCode: `items = ['铅笔', '橡皮']\nitems.append('尺子')\nitems.insert(1, '钢笔')\nitems[0] = '自动铅笔'`,
+      },
+      {
+        title: '3. 统计与遍历',
+        points: [
+          'len() 统计元素个数，sum() 适用于数字列表求和。',
+          'max() 和 min() 可以求最大值和最小值。',
+          'for item in items 适合逐个遍历元素。',
+          'enumerate(items, start=1) 适合一边遍历一边拿序号。',
+        ],
+        exampleTitle: '示例',
+        exampleCode: `scores = [78, 92, 85]\nprint(len(scores))\nprint(max(scores))\nfor index, score in enumerate(scores, start=1):\n    print(index, score)`,
+      },
+    ],
+    closingTip: '做题时优先把结果保存到题目要求的变量里，再考虑是否打印输出。',
+  },
   levels: [
     {
       key: 'create-orders',

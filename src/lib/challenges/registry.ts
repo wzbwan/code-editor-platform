@@ -1,7 +1,8 @@
 import { listMilkTeaChapter } from '@/lib/challenges/chapters/list-milk-tea'
+import { sequenceSetCampChapter } from '@/lib/challenges/chapters/sequence-set-camp'
 import { ChallengeChapterDefinition, ChallengeLevelDefinition } from '@/lib/challenges/types'
 
-const chapters = [listMilkTeaChapter] satisfies ChallengeChapterDefinition[]
+const chapters = [listMilkTeaChapter, sequenceSetCampChapter] satisfies ChallengeChapterDefinition[]
 
 export function getAllChallengeChapters() {
   return chapters

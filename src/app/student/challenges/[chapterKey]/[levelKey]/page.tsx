@@ -40,6 +40,7 @@ export default async function StudentChallengeLevelPage({ params }: Props) {
     <ChallengeLevelClient
       chapterKey={data.chapter.key}
       chapterTitle={data.chapter.title}
+      chapterHelpDoc={data.chapter.helpDoc}
       level={{
         ...data.level,
         latestSubmittedAt: data.level.latestSubmittedAt

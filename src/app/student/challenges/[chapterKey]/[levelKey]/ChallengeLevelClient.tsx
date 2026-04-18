@@ -6,7 +6,7 @@ import { useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
 import LocalRunnerTerminal from '@/components/LocalRunnerTerminal'
 import { formatAppDateTime } from '@/lib/date-format'
-import { ChallengeJudgeConfig } from '@/lib/challenges/types'
+import { ChallengeHelpDoc, ChallengeJudgeConfig } from '@/lib/challenges/types'
 import { judgeChallengeWithLocalRunner } from '@/lib/challenges/client-judge'
 
 interface SimpleLevelLink {
@@ -17,6 +17,7 @@ interface SimpleLevelLink {
 interface Props {
   chapterKey: string
   chapterTitle: string
+  chapterHelpDoc: ChallengeHelpDoc
   level: {
     key: string
     title: string
@@ -42,6 +43,7 @@ interface Props {
 export default function ChallengeLevelClient({
   chapterKey,
   chapterTitle,
+  chapterHelpDoc,
   level,
   previousLevel,
   nextLevel,
@@ -52,6 +54,7 @@ export default function ChallengeLevelClient({
   const [message, setMessage] = useState(level.latestJudgeMessage || '')
   const [stdout, setStdout] = useState(level.latestStdout || '')
   const [stderr, setStderr] = useState(level.latestStderr || '')
+  const [showHelpDoc, setShowHelpDoc] = useState(false)
 
   const handleSubmit = async () => {
     if (!code.trim()) {
@@ -110,18 +113,92 @@ export default function ChallengeLevelClient({
         <Link href={`/student/challenges/${chapterKey}`} className="text-sm text-blue-600 hover:underline">
           返回章节
         </Link>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">{chapterTitle}</span>
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">
-            通关积分 {level.points}
-          </span>
-          {level.isPassed && (
-            <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">
-              已通关
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHelpDoc(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-400 hover:text-blue-600"
+            title="打开帮助文档"
+            aria-label="打开帮助文档"
+          >
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.7 1.2-1.7 2.7" />
+              <path d="M12 17h.01" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+          </button>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">{chapterTitle}</span>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">
+              通关积分 {level.points}
             </span>
-          )}
+            {level.isPassed && (
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">
+                已通关
+              </span>
+            )}
+          </div>
         </div>
       </div>
+
+      {showHelpDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-8">
+          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-900 px-6 py-5 text-white">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-300">帮助文档</div>
+                <h2 className="mt-2 text-2xl font-semibold">{chapterHelpDoc.title}</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  {chapterHelpDoc.intro}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHelpDoc(false)}
+                className="rounded-full border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="max-h-[calc(85vh-7rem)] overflow-y-auto px-6 py-6">
+              <div className="space-y-5">
+                {chapterHelpDoc.sections.map((section) => (
+                  <section
+                    key={section.title}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                  >
+                    <h3 className="text-lg font-semibold text-slate-900">{section.title}</h3>
+                    <div className="mt-3 space-y-2">
+                      {section.points.map((point) => (
+                        <p key={point} className="text-sm leading-7 text-slate-700">
+                          {point}
+                        </p>
+                      ))}
+                    </div>
+                    {section.exampleCode && (
+                      <div className="mt-4 rounded-xl bg-slate-900 p-4 text-slate-100">
+                        <div className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-slate-400">
+                          {section.exampleTitle || '示例'}
+                        </div>
+                        <pre className="whitespace-pre-wrap text-sm leading-6">
+                          {section.exampleCode}
+                        </pre>
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+
+              {chapterHelpDoc.closingTip && (
+                <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm leading-7 text-blue-900">
+                  {chapterHelpDoc.closingTip}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid min-h-[calc(100vh-7.5rem)] grid-cols-1 gap-3 lg:grid-cols-[minmax(320px,30vw)_minmax(0,1fr)]">
         <div className="flex min-h-[320px] flex-col gap-3 lg:min-h-[calc(100vh-7.5rem)]">

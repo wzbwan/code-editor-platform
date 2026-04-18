@@ -186,6 +186,7 @@ export async function getStudentChallengeChapterView(studentId: string, chapterK
       title: chapter.title,
       theme: chapter.theme,
       description: chapter.description,
+      helpDoc: chapter.helpDoc,
       isUnlocked: Boolean(chapterUnlock),
       levels,
     },

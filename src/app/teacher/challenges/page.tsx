@@ -82,7 +82,7 @@ export default async function TeacherChallengesPage({ searchParams }: Props) {
                 <p className="mt-2 text-sm leading-6 text-slate-600">{chapter.description}</p>
               </div>
               <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                className={`rounded-full px-3 py-1 w-20 text-xs font-medium ${
                   chapter.isUnlocked
                     ? 'bg-emerald-100 text-emerald-700'
                     : 'bg-slate-200 text-slate-600'

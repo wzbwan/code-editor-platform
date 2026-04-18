@@ -35,14 +35,33 @@ function buildVariableJudgeScript(code: string, variableNames: string[]) {
 
 import json
 
+def __challenge_normalize(value):
+    if isinstance(value, set):
+        normalized_items = [__challenge_normalize(item) for item in value]
+        return sorted(
+            normalized_items,
+            key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True)
+        )
+    if isinstance(value, tuple):
+        return [__challenge_normalize(item) for item in value]
+    if isinstance(value, list):
+        return [__challenge_normalize(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): __challenge_normalize(item)
+            for key, item in value.items()
+        }
+    return value
+
 __challenge_result = {}
 for __challenge_name in ${variableNamesJson}:
     if __challenge_name in globals():
         try:
-            json.dumps(globals()[__challenge_name], ensure_ascii=False)
+            __challenge_value = __challenge_normalize(globals()[__challenge_name])
+            json.dumps(__challenge_value, ensure_ascii=False)
             __challenge_result[__challenge_name] = {
                 "missing": False,
-                "value": globals()[__challenge_name],
+                "value": __challenge_value,
             }
         except TypeError:
             __challenge_result[__challenge_name] = {
