@@ -165,10 +165,7 @@ export default function PracticeTeacherBoard({ sessionId, initialData }: Props) 
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="text-sm font-medium uppercase tracking-[0.2em] text-amber-700">
-                逐题展示倒计时
-              </div>
-              <div className="mt-2 text-sm text-slate-600">
-                纯前端展示，不参与提交、结算和任何判分逻辑。
+                倒计时
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">

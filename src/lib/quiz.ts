@@ -191,11 +191,24 @@ export function parseQuestionRows(rows: (string | number | null)[][]) {
 }
 
 function tokenizeOptionAnswer(value: string) {
-  return value
-    .toUpperCase()
-    .split(/[\s,，;；|、]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
+  const normalized = value.toUpperCase().trim()
+  if (!normalized) {
+    return []
+  }
+
+  const compact = normalized.replace(/[\s,，;；|、]+/g, '')
+  if (/^[A-Z]+$/.test(compact)) {
+    return Array.from(new Set(compact.split('')))
+  }
+
+  return Array.from(
+    new Set(
+      normalized
+        .split(/[\s,，;；|、]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  )
 }
 
 function normalizeJudgeAnswer(value: string) {
