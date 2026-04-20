@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "audit:pet-exp": "tsx scripts/audit-pet-exp.ts",
+    "audit:paper-score": "tsx scripts/audit-paper-score.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts"
