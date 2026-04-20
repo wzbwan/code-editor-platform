@@ -704,12 +704,20 @@ export async function getTeacherPracticeSessionView(teacherId: string, sessionId
     return null
   }
 
-  const totalStudents = await prisma.user.count({
+  const classmates = await prisma.user.findMany({
     where: {
       role: 'STUDENT',
       ...getStudentClassQuery(session.className),
     },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      className: true,
+    },
+    orderBy: [{ name: 'asc' }, { username: 'asc' }],
   })
+  const totalStudents = classmates.length
 
   const currentQuestion = getQuestionByIndex(
     session.paper.questions,
@@ -720,16 +728,39 @@ export async function getTeacherPracticeSessionView(teacherId: string, sessionId
         (response) => response.paperQuestionId === currentQuestion.id
       )
     : []
+  const paperStudentMap = new Map(session.students.map((student) => [student.studentId, student] as const))
+  const currentQuestionResponseMap = new Map(
+    currentQuestionResponses.map((response) => [response.studentId, response] as const)
+  )
+  const submissionRoster = classmates.map((student) => {
+    if (session.mode === PRACTICE_MODES.PAPER) {
+      const studentSession = paperStudentMap.get(student.id)
+
+      return {
+        id: student.id,
+        student,
+        hasSubmitted: Boolean(studentSession?.submittedAt),
+        submittedAt: studentSession?.submittedAt || null,
+      }
+    }
+
+    const currentResponse = currentQuestionResponseMap.get(student.id)
+
+    return {
+      id: student.id,
+      student,
+      hasSubmitted: Boolean(currentResponse),
+      submittedAt: currentResponse?.submittedAt || null,
+    }
+  })
 
   return {
     session,
     totalStudents,
     currentQuestion,
     currentQuestionResponses,
-    submittedCount:
-      session.mode === PRACTICE_MODES.PAPER
-        ? session.students.filter((student) => student.submittedAt).length
-        : currentQuestionResponses.length,
+    submissionRoster,
+    submittedCount: submissionRoster.filter((student) => student.hasSubmitted).length,
   }
 }
 

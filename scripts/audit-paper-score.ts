@@ -185,7 +185,8 @@ async function main() {
   }
 
   printSection('逐题明细')
-  for (const [index, item] of orderedQuestions.entries()) {
+  for (let index = 0; index < orderedQuestions.length; index += 1) {
+    const item = orderedQuestions[index]
     const submittedAnswer = item.response?.answer || ''
     const storedIsCorrect = item.response?.isCorrect ?? false
     const recomputedIsCorrect = evaluateQuestionAnswer(item.question, submittedAnswer)
@@ -208,7 +209,9 @@ async function main() {
 
     if (item.displayedOptions.length > 0) {
       console.log(
-        `展示选项: ${item.displayedOptions.map((option) => `${option.key}.${option.value}`).join(' / ')}`
+        `展示选项: ${item.displayedOptions
+          .map((option: { key: string; value: string }) => `${option.key}.${option.value}`)
+          .join(' / ')}`
       )
     }
   }
