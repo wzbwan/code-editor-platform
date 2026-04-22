@@ -18,6 +18,7 @@ interface Props {
   chapterKey: string
   chapterTitle: string
   chapterHelpDoc: ChallengeHelpDoc
+  embedded?: boolean
   level: {
     key: string
     title: string
@@ -44,6 +45,7 @@ export default function ChallengeLevelClient({
   chapterKey,
   chapterTitle,
   chapterHelpDoc,
+  embedded = false,
   level,
   previousLevel,
   nextLevel,
@@ -55,6 +57,7 @@ export default function ChallengeLevelClient({
   const [stdout, setStdout] = useState(level.latestStdout || '')
   const [stderr, setStderr] = useState(level.latestStderr || '')
   const [showHelpDoc, setShowHelpDoc] = useState(false)
+  const embeddedQuery = embedded ? '?embedded=godot' : ''
 
   const handleSubmit = async () => {
     if (!code.trim()) {
@@ -110,7 +113,7 @@ export default function ChallengeLevelClient({
   return (
     <div className="w-full px-2 py-4 lg:px-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <Link href={`/student/challenges/${chapterKey}`} className="text-sm text-blue-600 hover:underline">
+        <Link href={`/student/challenges/${chapterKey}${embeddedQuery}`} className="text-sm text-blue-600 hover:underline">
           返回章节
         </Link>
         <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +256,7 @@ export default function ChallengeLevelClient({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {previousLevel ? (
                   <Link
-                    href={`/student/challenges/${chapterKey}/${previousLevel.key}`}
+                    href={`/student/challenges/${chapterKey}/${previousLevel.key}${embeddedQuery}`}
                     className="text-sm text-slate-600 hover:text-slate-900"
                   >
                     上一关：{previousLevel.title}
@@ -264,7 +267,7 @@ export default function ChallengeLevelClient({
 
                 {nextLevel ? (
                   <Link
-                    href={`/student/challenges/${chapterKey}/${nextLevel.key}`}
+                    href={`/student/challenges/${chapterKey}/${nextLevel.key}${embeddedQuery}`}
                     className="text-sm text-slate-600 hover:text-slate-900"
                   >
                     下一关：{nextLevel.title}

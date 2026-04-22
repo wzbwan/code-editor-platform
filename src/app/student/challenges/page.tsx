@@ -2,9 +2,15 @@ import Link from 'next/link'
 import { requireStudent } from '@/lib/auth'
 import { getStudentChallengeHome } from '@/lib/challenges/service'
 
-export default async function StudentChallengesPage() {
+interface Props {
+  searchParams?: Promise<{ embedded?: string }>
+}
+
+export default async function StudentChallengesPage({ searchParams }: Props) {
+  const embedded = (await searchParams)?.embedded
   const student = await requireStudent()
   const data = await getStudentChallengeHome(student.id)
+  const embeddedQuery = embedded === 'godot' ? '?embedded=godot' : ''
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -15,9 +21,9 @@ export default async function StudentChallengesPage() {
             当前班级：{data.className || '未分班'}。教师开放章节后，你可以逐关挑战并获得积分。
           </p>
         </div>
-        <Link href="/student" className="text-sm text-blue-600 hover:underline">
+        {/* <Link href="/student" className="text-sm text-blue-600 hover:underline">
           返回学生首页
-        </Link>
+        </Link> */}
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -52,7 +58,7 @@ export default async function StudentChallengesPage() {
             <div className="mt-5">
               {chapter.isUnlocked ? (
                 <Link
-                  href={`/student/challenges/${chapter.key}`}
+                  href={`/student/challenges/${chapter.key}${embeddedQuery}`}
                   className="inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm text-white hover:bg-blue-700"
                 >
                   进入章节

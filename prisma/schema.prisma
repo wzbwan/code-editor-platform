@@ -29,6 +29,7 @@ model User {
   practiceResponses PracticeResponse[] @relation("StudentPracticeResponses")
   challengeProgresses ChallengeProgress[] @relation("StudentChallengeProgresses")
   challengeSubmissions ChallengeSubmission[] @relation("StudentChallengeSubmissions")
+  godotSessionBootstraps GodotSessionBootstrap[] @relation("UserGodotSessionBootstraps")
   pet StudentPet?
 }
 
@@ -363,4 +364,20 @@ model ChallengeSubmission {
 
   @@index([studentId, submittedAt])
   @@index([chapterKey, levelKey, submittedAt])
+}
+
+model GodotSessionBootstrap {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  clientType String   @default("GODOT")
+  targetPath String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  userId String
+  user   User   @relation("UserGodotSessionBootstraps", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }

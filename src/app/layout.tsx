@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import Providers from '@/components/Providers'
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body>
         <Providers>
-          <Navbar />
+          <Suspense fallback={null}>
+            <Navbar />
+          </Suspense>
           <main className="min-h-screen bg-gray-100">
             {children}
           </main>

@@ -6,9 +6,11 @@ import ChallengeLevelClient from './ChallengeLevelClient'
 
 interface Props {
   params: Promise<{ chapterKey: string; levelKey: string }>
+  searchParams?: Promise<{ embedded?: string }>
 }
 
-export default async function StudentChallengeLevelPage({ params }: Props) {
+export default async function StudentChallengeLevelPage({ params, searchParams }: Props) {
+  const embedded = (await searchParams)?.embedded
   const student = await requireStudent()
   const { chapterKey, levelKey } = await params
   const data = await getStudentChallengeLevelView(student.id, chapterKey, levelKey)
@@ -26,7 +28,7 @@ export default async function StudentChallengeLevelPage({ params }: Props) {
             请先完成前序关卡，或等待教师提前开放本关。
           </p>
           <Link
-            href={`/student/challenges/${chapterKey}`}
+            href={`/student/challenges/${chapterKey}${embedded === 'godot' ? '?embedded=godot' : ''}`}
             className="mt-6 inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm text-white hover:bg-blue-700"
           >
             返回章节
@@ -41,6 +43,7 @@ export default async function StudentChallengeLevelPage({ params }: Props) {
       chapterKey={data.chapter.key}
       chapterTitle={data.chapter.title}
       chapterHelpDoc={data.chapter.helpDoc}
+      embedded={embedded === 'godot'}
       level={{
         ...data.level,
         latestSubmittedAt: data.level.latestSubmittedAt

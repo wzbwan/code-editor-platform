@@ -1,12 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 
 export default function Navbar() {
   const { data: session } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  if (searchParams.get('embedded') === 'godot') {
+    return null
+  }
 
   const handleSignOut = async () => {
     await signOut({ redirect: false })
@@ -38,7 +43,7 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link href="/student" className="hover:text-gray-300">我的作业</Link>
-                  <Link href="/student/challenges" className="hover:text-gray-300">代码闯关</Link>
+                  <Link href="/teacher/challenges" className="hover:text-gray-300">代码闯关</Link>
                   <Link href="/student/practice" className="hover:text-gray-300">答题练习</Link>
                   <Link href="/student/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/student/profile" className="hover:text-gray-300">个人中心</Link>

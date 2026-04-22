@@ -5,12 +5,15 @@ import { getStudentChallengeChapterView } from '@/lib/challenges/service'
 
 interface Props {
   params: Promise<{ chapterKey: string }>
+  searchParams?: Promise<{ embedded?: string }>
 }
 
-export default async function StudentChallengeChapterPage({ params }: Props) {
+export default async function StudentChallengeChapterPage({ params, searchParams }: Props) {
+  const embedded = (await searchParams)?.embedded
   const student = await requireStudent()
   const { chapterKey } = await params
   const data = await getStudentChallengeChapterView(student.id, chapterKey)
+  const embeddedQuery = embedded === 'godot' ? '?embedded=godot' : ''
 
   if (!data) {
     notFound()
@@ -20,7 +23,7 @@ export default async function StudentChallengeChapterPage({ params }: Props) {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-8 flex items-end justify-between gap-4">
         <div>
-          <Link href="/student/challenges" className="text-sm text-blue-600 hover:underline">
+          <Link href={`/student/challenges${embeddedQuery}`} className="text-sm text-blue-600 hover:underline">
             返回章节列表
           </Link>
           <div className="mt-3 inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
@@ -78,7 +81,7 @@ export default async function StudentChallengeChapterPage({ params }: Props) {
               <div className="mt-5">
                 {level.isAccessible ? (
                   <Link
-                    href={`/student/challenges/${data.chapter.key}/${level.key}`}
+                    href={`/student/challenges/${data.chapter.key}/${level.key}${embeddedQuery}`}
                     className="inline-flex rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-white hover:bg-slate-800"
                   >
                     {level.isPassed ? '再次查看' : '开始闯关'}
