@@ -24,8 +24,34 @@ function normalizeOutput(value: string) {
   return value.replace(/\r\n/g, '\n').trim()
 }
 
+function isChallengeRecord(value: ChallengeValue): value is { [key: string]: ChallengeValue } {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
 function challengeValuesEqual(left: ChallengeValue, right: ChallengeValue): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false
+    }
+
+    return left.every((item, index) => challengeValuesEqual(item, right[index]))
+  }
+
+  if (isChallengeRecord(left) || isChallengeRecord(right)) {
+    if (!isChallengeRecord(left) || !isChallengeRecord(right)) {
+      return false
+    }
+
+    const leftKeys = Object.keys(left).sort()
+    const rightKeys = Object.keys(right).sort()
+    if (!challengeValuesEqual(leftKeys, rightKeys)) {
+      return false
+    }
+
+    return leftKeys.every((key) => challengeValuesEqual(left[key], right[key]))
+  }
+
+  return left === right
 }
 
 function buildVariableJudgeScript(code: string, variableNames: string[]) {
