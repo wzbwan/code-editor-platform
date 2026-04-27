@@ -37,6 +37,14 @@ function normalizePaperAnswer(
   return String(value || '')
 }
 
+function preventProtectedTextCopy(event: React.ClipboardEvent<HTMLElement>) {
+  event.preventDefault()
+}
+
+function preventProtectedTextMenu(event: React.MouseEvent<HTMLElement>) {
+  event.preventDefault()
+}
+
 export default function StudentPracticeClient() {
   const [payload, setPayload] = useState<PracticePayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,7 +108,13 @@ export default function StudentPracticeClient() {
       return (
         <div className="space-y-3">
           {question.options?.map((option) => (
-            <label key={option.key} className="flex items-center gap-3 rounded-lg border px-4 py-3">
+            <label
+              key={option.key}
+              onCopy={preventProtectedTextCopy}
+              onCut={preventProtectedTextCopy}
+              onContextMenu={preventProtectedTextMenu}
+              className="flex select-none items-center gap-3 rounded-lg border px-4 py-3"
+            >
               <input
                 type="radio"
                 name={`question-${question.id}`}
@@ -126,7 +140,13 @@ export default function StudentPracticeClient() {
       return (
         <div className="space-y-3">
           {question.options?.map((option) => (
-            <label key={option.key} className="flex items-center gap-3 rounded-lg border px-4 py-3">
+            <label
+              key={option.key}
+              onCopy={preventProtectedTextCopy}
+              onCut={preventProtectedTextCopy}
+              onContextMenu={preventProtectedTextMenu}
+              className="flex select-none items-center gap-3 rounded-lg border px-4 py-3"
+            >
               <input
                 type="checkbox"
                 value={option.key}
@@ -275,7 +295,12 @@ export default function StudentPracticeClient() {
                 {practice.question.type}
               </span>
             </div>
-            <div className="whitespace-pre-wrap text-lg text-slate-800">
+            <div
+              onCopy={preventProtectedTextCopy}
+              onCut={preventProtectedTextCopy}
+              onContextMenu={preventProtectedTextMenu}
+              className="select-none whitespace-pre-wrap text-lg text-slate-800"
+            >
               {practice.question.content}
             </div>
             <div className="mt-6">
@@ -348,7 +373,12 @@ export default function StudentPracticeClient() {
                 {question.type}
               </span>
             </div>
-            <div className="whitespace-pre-wrap text-lg text-slate-800">
+            <div
+              onCopy={preventProtectedTextCopy}
+              onCut={preventProtectedTextCopy}
+              onContextMenu={preventProtectedTextMenu}
+              className="select-none whitespace-pre-wrap text-lg text-slate-800"
+            >
               {question.content}
             </div>
             <div className="mt-6">

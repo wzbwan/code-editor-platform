@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
@@ -8,6 +9,43 @@ export default function Navbar() {
   const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [studentChallengesNavVisible, setStudentChallengesNavVisible] = useState<boolean | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (session?.user?.role !== 'STUDENT') {
+      setStudentChallengesNavVisible(null)
+      return
+    }
+
+    let cancelled = false
+
+    const loadStudentNavSetting = async () => {
+      try {
+        const res = await fetch('/api/app-settings/student-challenges-nav', {
+          cache: 'no-store',
+        })
+        if (!res.ok) {
+          throw new Error('Failed to load navigation setting')
+        }
+        const data = await res.json()
+        if (!cancelled) {
+          setStudentChallengesNavVisible(Boolean(data.visible))
+        }
+      } catch {
+        if (!cancelled) {
+          setStudentChallengesNavVisible(true)
+        }
+      }
+    }
+
+    void loadStudentNavSetting()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user?.role])
 
   if (searchParams.get('embedded') === 'godot') {
     return null
@@ -43,7 +81,9 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link href="/student" className="hover:text-gray-300">我的作业</Link>
-                  <Link href="/student/challenges" className="hover:text-gray-300">代码闯关</Link>
+                  {studentChallengesNavVisible && (
+                    <Link href="/student/challenges" className="hover:text-gray-300">代码闯关</Link>
+                  )}
                   <Link href="/student/practice" className="hover:text-gray-300">答题练习</Link>
                   <Link href="/student/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/student/profile" className="hover:text-gray-300">个人中心</Link>

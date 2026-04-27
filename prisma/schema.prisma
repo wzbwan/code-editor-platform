@@ -33,6 +33,13 @@ model User {
   pet StudentPet?
 }
 
+model AppSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Assignment {
   id          String   @id @default(cuid())
   title       String
