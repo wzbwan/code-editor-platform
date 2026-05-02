@@ -1,19 +1,47 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { formatLoginRetryMessage, parseLoginRetryError } from '@/lib/auth-throttle-messages'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [retryUntil, setRetryUntil] = useState(0)
+  const [retryUsername, setRetryUsername] = useState('')
+  const [nowMs, setNowMs] = useState(Date.now())
   const router = useRouter()
+  const normalizedUsername = username.trim()
+  const rawRetrySeconds = Math.max(0, Math.ceil((retryUntil - nowMs) / 1000))
+  const retrySeconds = retryUsername === normalizedUsername ? rawRetrySeconds : 0
+
+  useEffect(() => {
+    if (!retryUntil) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      const current = Date.now()
+      setNowMs(current)
+      if (current >= retryUntil) {
+        setRetryUntil(0)
+        setRetryUsername('')
+      }
+    }, 250)
+
+    return () => window.clearInterval(timer)
+  }, [retryUntil])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (retrySeconds > 0) {
+      setError(formatLoginRetryMessage(retrySeconds))
+      return
+    }
+
     setError('')
     setLoading(true)
 
@@ -26,6 +54,16 @@ export default function LoginPage() {
     setLoading(false)
 
     if (result?.error) {
+      const retryAfterSeconds = parseLoginRetryError(result.error)
+      if (retryAfterSeconds) {
+        const current = Date.now()
+        setRetryUntil(current + retryAfterSeconds * 1000)
+        setRetryUsername(normalizedUsername)
+        setNowMs(current)
+        setError(formatLoginRetryMessage(retryAfterSeconds))
+        return
+      }
+
       setError('用户名或密码错误')
     } else {
       router.push('/')
@@ -62,10 +100,10 @@ export default function LoginPage() {
         </div>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || retrySeconds > 0}
           className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? '登录中...' : '登录'}
+          {loading ? '登录中...' : retrySeconds > 0 ? `${retrySeconds} 秒后重试` : '登录'}
         </button>
         {/* <p className="mt-4 text-center text-sm text-gray-600">
           没有账号？{' '}

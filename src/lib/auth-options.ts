@@ -2,6 +2,8 @@ import { type NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { clearLoginFailures, getLoginRetryAfterSeconds, recordLoginFailure } from '@/lib/auth-throttle'
+import { createLoginRetryError } from '@/lib/auth-throttle-messages'
 import { SESSION_CLIENT_TYPES } from '@/lib/session-client'
 
 export const authOptions: NextAuthOptions = {
@@ -17,8 +19,14 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
+        const username = credentials.username.trim()
+        const retryAfterSeconds = await getLoginRetryAfterSeconds(username)
+        if (retryAfterSeconds > 0) {
+          throw new Error(createLoginRetryError(retryAfterSeconds))
+        }
+
         const user = await prisma.user.findUnique({
-          where: { username: credentials.username },
+          where: { username },
         })
 
         if (!user) {
@@ -31,8 +39,11 @@ export const authOptions: NextAuthOptions = {
         )
 
         if (!passwordMatch) {
-          return null
+          const nextRetryAfterSeconds = await recordLoginFailure(username)
+          throw new Error(createLoginRetryError(nextRetryAfterSeconds))
         }
+
+        await clearLoginFailures(username)
 
         return {
           id: user.id,

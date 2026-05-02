@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import CodeEditor from '@/components/CodeEditor'
 import LocalRunnerTerminal from '@/components/LocalRunnerTerminal'
 import { formatAppDateTime } from '@/lib/date-format'
 import { ChallengeHelpDoc, ChallengeJudgeConfig } from '@/lib/challenges/types'
 import { judgeChallengeWithLocalRunner } from '@/lib/challenges/client-judge'
+import { CHALLENGE_SUBMIT_COOLDOWN_SECONDS } from '@/lib/challenges/cooldown-config'
 
 interface SimpleLevelLink {
   key: string
@@ -57,7 +58,32 @@ export default function ChallengeLevelClient({
   const [stdout, setStdout] = useState(level.latestStdout || '')
   const [stderr, setStderr] = useState(level.latestStderr || '')
   const [showHelpDoc, setShowHelpDoc] = useState(false)
+  const [submitCooldownUntil, setSubmitCooldownUntil] = useState(0)
+  const [nowMs, setNowMs] = useState(Date.now())
   const embeddedQuery = embedded ? '?embedded=godot' : ''
+  const submitCooldownSeconds = Math.max(0, Math.ceil((submitCooldownUntil - nowMs) / 1000))
+
+  useEffect(() => {
+    if (!submitCooldownUntil) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      const current = Date.now()
+      setNowMs(current)
+      if (current >= submitCooldownUntil) {
+        setSubmitCooldownUntil(0)
+      }
+    }, 250)
+
+    return () => window.clearInterval(timer)
+  }, [submitCooldownUntil])
+
+  const startSubmitCooldown = (seconds = CHALLENGE_SUBMIT_COOLDOWN_SECONDS) => {
+    const current = Date.now()
+    setNowMs(current)
+    setSubmitCooldownUntil(current + seconds * 1000)
+  }
 
   const handleSubmit = async () => {
     if (!code.trim()) {
@@ -65,6 +91,13 @@ export default function ChallengeLevelClient({
       return
     }
 
+    const remainingCooldownSeconds = Math.max(0, Math.ceil((submitCooldownUntil - Date.now()) / 1000))
+    if (remainingCooldownSeconds > 0) {
+      setMessage(`提交冷却中，请 ${remainingCooldownSeconds} 秒后再试`)
+      return
+    }
+
+    startSubmitCooldown()
     setSaving(true)
     setMessage('')
 
@@ -91,6 +124,9 @@ export default function ChallengeLevelClient({
 
       const data = await res.json()
       if (!res.ok) {
+        if (typeof data.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0) {
+          startSubmitCooldown(data.retryAfterSeconds)
+        }
         setMessage(data.error || '提交失败')
         return
       }
@@ -308,10 +344,10 @@ export default function ChallengeLevelClient({
                 {message && !message.includes('恭喜') && <span className="text-sm text-rose-600">{message}</span>}
                 <button
                   onClick={handleSubmit}
-                  disabled={saving}
+                  disabled={saving || submitCooldownSeconds > 0}
                   className="rounded-lg bg-blue-600 px-6 py-2.5 text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {saving ? '提交中...' : '提交判题'}
+                  {saving ? '提交中...' : submitCooldownSeconds > 0 ? `${submitCooldownSeconds}秒后提交` : '提交判题'}
                 </button>
               </div>
             </div>

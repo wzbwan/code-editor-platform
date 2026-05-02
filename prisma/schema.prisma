@@ -33,6 +33,18 @@ model User {
   pet StudentPet?
 }
 
+model LoginAttemptThrottle {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  failedCount  Int       @default(0)
+  lockedUntil  DateTime?
+  lastFailedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([lockedUntil])
+}
+
 model AppSetting {
   key       String   @id
   value     String
@@ -371,6 +383,12 @@ model ChallengeSubmission {
 
   @@index([studentId, submittedAt])
   @@index([chapterKey, levelKey, submittedAt])
+}
+
+model ChallengeSubmitCooldown {
+  studentId     String   @id
+  nextAllowedAt DateTime
+  updatedAt     DateTime @updatedAt
 }
 
 model GodotSessionBootstrap {

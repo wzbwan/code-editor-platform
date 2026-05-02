@@ -2,6 +2,10 @@ import { getServerSession } from 'next-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth-options'
 import { submitStudentChallenge } from '@/lib/challenges/service'
+import {
+  getChallengeSubmitRetryAfterSeconds,
+  recordChallengeSubmitCooldown,
+} from '@/lib/challenges/cooldown'
 
 export const runtime = 'nodejs'
 
@@ -39,12 +43,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const retryAfterSeconds = await getChallengeSubmitRetryAfterSeconds(session.user.id)
+    if (retryAfterSeconds > 0) {
+      return NextResponse.json(
+        {
+          error: `提交过于频繁，请 ${retryAfterSeconds} 秒后再试`,
+          retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfterSeconds),
+          },
+        }
+      )
+    }
+
     const result = await submitStudentChallenge(session.user.id, {
       chapterKey,
       levelKey,
       code,
       judgeResult,
     })
+
+    await recordChallengeSubmitCooldown(session.user.id)
 
     return NextResponse.json(result)
   } catch (error) {
