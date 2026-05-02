@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { consumeGodotSessionBootstrap, issueNextAuthSessionCookie } from '@/lib/godot-auth'
+import {
+  clearNextAuthSessionCookies,
+  consumeGodotSessionBootstrap,
+  issueNextAuthSessionCookie,
+} from '@/lib/godot-auth'
 import { SESSION_CLIENT_TYPES } from '@/lib/session-client'
 
 export const runtime = 'nodejs'
@@ -53,6 +57,7 @@ export async function GET(request: NextRequest) {
   const redirectUrl = new URL(bootstrap.targetPath, request.nextUrl.origin)
   const response = NextResponse.redirect(redirectUrl)
 
+  clearNextAuthSessionCookies(response)
   await issueNextAuthSessionCookie(response, {
     id: bootstrap.user.id,
     name: bootstrap.user.name,

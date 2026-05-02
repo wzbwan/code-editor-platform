@@ -7,6 +7,11 @@ import { SESSION_CLIENT_TYPES, type SessionClientType } from '@/lib/session-clie
 const DEFAULT_GODOT_TARGET_PATH = '/student/challenges?embedded=godot'
 const GODOT_BOOTSTRAP_MAX_AGE_SECONDS = 60 * 5
 const NEXTAUTH_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+const NEXTAUTH_COOKIE_NAMES = [
+  'next-auth.session-token',
+  '__Secure-next-auth.session-token',
+]
+const NEXTAUTH_CHUNK_SUFFIX_COUNT = 10
 
 interface SessionCookieConfig {
   cookieName: string
@@ -41,6 +46,14 @@ export function getSessionCookieConfigForOrigin(origin: string): SessionCookieCo
     cookieName: secureCookie ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
     secureCookie,
   }
+}
+
+function getSessionCookieConfigForRequest(origin: string): SessionCookieConfig {
+  if (process.env.NEXTAUTH_URL) {
+    return getSessionCookieConfig()
+  }
+
+  return getSessionCookieConfigForOrigin(origin)
 }
 
 export function normalizeGodotTargetPath(input?: string | null) {
@@ -141,7 +154,7 @@ export async function issueNextAuthSessionCookie(
   response: NextResponse,
   input: IssueSessionParams & { origin: string }
 ) {
-  const { cookieName, secureCookie } = getSessionCookieConfigForOrigin(input.origin)
+  const { cookieName, secureCookie } = getSessionCookieConfigForRequest(input.origin)
   const sessionToken = await encode({
     secret: getNextAuthSecret(),
     maxAge: NEXTAUTH_SESSION_MAX_AGE_SECONDS,
@@ -161,5 +174,26 @@ export async function issueNextAuthSessionCookie(
     secure: secureCookie,
     path: '/',
     maxAge: NEXTAUTH_SESSION_MAX_AGE_SECONDS,
+  })
+}
+
+export function clearNextAuthSessionCookies(response: NextResponse) {
+  for (const cookieName of NEXTAUTH_COOKIE_NAMES) {
+    expireCookie(response, cookieName)
+
+    for (let index = 0; index < NEXTAUTH_CHUNK_SUFFIX_COUNT; index += 1) {
+      expireCookie(response, `${cookieName}.${index}`)
+    }
+  }
+}
+
+function expireCookie(response: NextResponse, cookieName: string) {
+  response.cookies.set(cookieName, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: cookieName.startsWith('__Secure-'),
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
   })
 }
