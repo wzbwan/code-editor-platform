@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:class-defense-ws": "tsx scripts/class-defense-ws-server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -28,6 +29,7 @@
     "react": "^18",
     "react-dom": "^18",
     "react-simple-code-editor": "^0.13.1",
+    "ws": "^8.20.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -35,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/ws": "^8.18.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.3",
     "postcss": "^8",

@@ -8,29 +8,30 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  password  String
-  name      String
-  className String?
-  role      String   @default("STUDENT")
-  pointBalance Float @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  submissions Submission[]
-  assignments Assignment[] @relation("TeacherAssignments")
-  pointRecords StudentPointRecord[] @relation("StudentPointRecords")
-  operatedPointRecords StudentPointRecord[] @relation("OperatorPointRecords")
-  questionBankItems QuestionBankItem[] @relation("TeacherQuestionBankItems")
-  practicePapers PracticePaper[] @relation("TeacherPracticePapers")
-  teachingPracticeSessions PracticeSession[] @relation("TeacherPracticeSessions")
-  studentPracticeSessions PracticeSessionStudent[] @relation("StudentPracticeSessions")
-  practiceResponses PracticeResponse[] @relation("StudentPracticeResponses")
-  challengeProgresses ChallengeProgress[] @relation("StudentChallengeProgresses")
-  challengeSubmissions ChallengeSubmission[] @relation("StudentChallengeSubmissions")
-  godotSessionBootstraps GodotSessionBootstrap[] @relation("UserGodotSessionBootstraps")
-  pet StudentPet?
+  id           String   @id @default(cuid())
+  username     String   @unique
+  password     String
+  name         String
+  className    String?
+  role         String   @default("STUDENT")
+  pointBalance Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  submissions              Submission[]
+  assignments              Assignment[]             @relation("TeacherAssignments")
+  pointRecords             StudentPointRecord[]     @relation("StudentPointRecords")
+  operatedPointRecords     StudentPointRecord[]     @relation("OperatorPointRecords")
+  questionBankItems        QuestionBankItem[]       @relation("TeacherQuestionBankItems")
+  practicePapers           PracticePaper[]          @relation("TeacherPracticePapers")
+  teachingPracticeSessions PracticeSession[]        @relation("TeacherPracticeSessions")
+  studentPracticeSessions  PracticeSessionStudent[] @relation("StudentPracticeSessions")
+  practiceResponses        PracticeResponse[]       @relation("StudentPracticeResponses")
+  challengeProgresses      ChallengeProgress[]      @relation("StudentChallengeProgresses")
+  challengeSubmissions     ChallengeSubmission[]    @relation("StudentChallengeSubmissions")
+  godotSessionBootstraps   GodotSessionBootstrap[]  @relation("UserGodotSessionBootstraps")
+  classDefenseMonsterTypes ClassDefenseMonsterType[] @relation("TeacherClassDefenseMonsterTypes")
+  pet                      StudentPet?
 }
 
 model LoginAttemptThrottle {
@@ -53,33 +54,33 @@ model AppSetting {
 }
 
 model Assignment {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String
   defaultCode String?
   dueDate     DateTime?
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  status      String    @default("ACTIVE")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   teacherId   String
-  teacher     User     @relation("TeacherAssignments", fields: [teacherId], references: [id])
+  teacher     User         @relation("TeacherAssignments", fields: [teacherId], references: [id])
   submissions Submission[]
 }
 
 model Submission {
-  id           String   @id @default(cuid())
-  code         String
-  score        Int?
-  feedback     String?
-  submittedAt  DateTime @default(now())
-  reviewedAt   DateTime?
-  
-  studentId     String
-  student       User     @relation(fields: [studentId], references: [id])
-  assignmentId  String
-  assignment    Assignment @relation(fields: [assignmentId], references: [id])
-  
+  id          String    @id @default(cuid())
+  code        String
+  score       Int?
+  feedback    String?
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id])
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+
   @@unique([studentId, assignmentId])
 }
 
@@ -122,59 +123,59 @@ model StudentPet {
 }
 
 model StudentPetEquipmentSlot {
-  id            String   @id @default(cuid())
+  id            String     @id @default(cuid())
   petId         String
   pet           StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
   slotIndex     Int
   equipmentKey  String?
   equipmentName String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@unique([petId, slotIndex])
 }
 
 model StudentPetSkillSlot {
-  id         String   @id @default(cuid())
-  petId      String
-  pet        StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
-  slotIndex  Int
-  skillKey   String?
-  skillName  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String     @id @default(cuid())
+  petId     String
+  pet       StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  slotIndex Int
+  skillKey  String?
+  skillName String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@unique([petId, slotIndex])
 }
 
 model StudentPetInventorySlot {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   petId     String
   pet       StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
   slotIndex Int
   itemKey   String?
   itemName  String?
-  quantity  Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  quantity  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@unique([petId, slotIndex])
 }
 
 model StudentPetExpRecord {
-  id              String   @id @default(cuid())
-  petId           String
-  pet             StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
-  expDelta        Int
-  pointDelta      Float?
-  reason          String
-  source          String   @default("POINT")
-  levelBefore     Int
-  levelAfter      Int
-  expBefore       Int
-  expAfter        Int
-  occurredAt      DateTime
-  createdAt       DateTime @default(now())
+  id          String     @id @default(cuid())
+  petId       String
+  pet         StudentPet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  expDelta    Int
+  pointDelta  Float?
+  reason      String
+  source      String     @default("POINT")
+  levelBefore Int
+  levelAfter  Int
+  expBefore   Int
+  expAfter    Int
+  occurredAt  DateTime
+  createdAt   DateTime   @default(now())
 
   @@index([petId, occurredAt])
 }
@@ -194,7 +195,7 @@ model QuestionBankItem {
   updatedAt DateTime @updatedAt
 
   teacherId String
-  teacher   User     @relation("TeacherQuestionBankItems", fields: [teacherId], references: [id], onDelete: Cascade)
+  teacher   User   @relation("TeacherQuestionBankItems", fields: [teacherId], references: [id], onDelete: Cascade)
 
   paperQuestions PaperQuestion[]
 
@@ -210,7 +211,7 @@ model PracticePaper {
   updatedAt   DateTime @updatedAt
 
   teacherId String
-  teacher   User     @relation("TeacherPracticePapers", fields: [teacherId], references: [id], onDelete: Cascade)
+  teacher   User   @relation("TeacherPracticePapers", fields: [teacherId], references: [id], onDelete: Cascade)
 
   questions PaperQuestion[]
   sessions  PracticeSession[]
@@ -219,19 +220,19 @@ model PracticePaper {
 }
 
 model PaperQuestion {
-  id          String   @id @default(cuid())
-  orderIndex  Int
-  content     String
-  type        String
-  score       Int
-  optionA     String?
-  optionB     String?
-  optionC     String?
-  optionD     String?
-  answer      String
-  scope       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  orderIndex Int
+  content    String
+  type       String
+  score      Int
+  optionA    String?
+  optionB    String?
+  optionC    String?
+  optionD    String?
+  answer     String
+  scope      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   paperId        String
   paper          PracticePaper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
@@ -245,22 +246,22 @@ model PaperQuestion {
 }
 
 model PracticeSession {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   mode                 String
-  status               String   @default("PENDING")
+  status               String    @default("PENDING")
   className            String
   durationMinutes      Int?
-  currentQuestionIndex Int      @default(0)
+  currentQuestionIndex Int       @default(0)
   startedAt            DateTime?
   questionStartedAt    DateTime?
   endedAt              DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  paperId    String
-  paper      PracticePaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  teacherId  String
-  teacher    User          @relation("TeacherPracticeSessions", fields: [teacherId], references: [id], onDelete: Cascade)
+  paperId   String
+  paper     PracticePaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   User          @relation("TeacherPracticeSessions", fields: [teacherId], references: [id], onDelete: Cascade)
 
   students  PracticeSessionStudent[]
   responses PracticeResponse[]
@@ -270,18 +271,18 @@ model PracticeSession {
 }
 
 model PracticeSessionStudent {
-  id              String   @id @default(cuid())
-  status          String   @default("PENDING")
-  questionOrder   String?
-  optionOrder     String?
-  startedAt       DateTime?
-  submittedAt     DateTime?
-  rawScore        Int?
-  finalScore      Float?
-  bonusMultiplier Float?
+  id                String    @id @default(cuid())
+  status            String    @default("PENDING")
+  questionOrder     String?
+  optionOrder       String?
+  startedAt         DateTime?
+  submittedAt       DateTime?
+  rawScore          Int?
+  finalScore        Float?
+  bonusMultiplier   Float?
   awardedPointDelta Float?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   sessionId String
   session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -295,26 +296,172 @@ model PracticeSessionStudent {
 }
 
 model PracticeResponse {
-  id               String   @id @default(cuid())
-  answer           String
-  isCorrect        Boolean?
-  awardedScore     Int?
+  id                String    @id @default(cuid())
+  answer            String
+  isCorrect         Boolean?
+  awardedScore      Int?
   awardedPointDelta Float?
-  settledAt        DateTime?
-  submittedAt      DateTime @default(now())
-  createdAt        DateTime @default(now())
+  settledAt         DateTime?
+  submittedAt       DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
   sessionId        String
-  session          PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session          PracticeSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   studentSessionId String
   studentSession   PracticeSessionStudent @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
   studentId        String
-  student          User @relation("StudentPracticeResponses", fields: [studentId], references: [id], onDelete: Cascade)
+  student          User                   @relation("StudentPracticeResponses", fields: [studentId], references: [id], onDelete: Cascade)
   paperQuestionId  String
-  paperQuestion    PaperQuestion @relation(fields: [paperQuestionId], references: [id], onDelete: Cascade)
+  paperQuestion    PaperQuestion          @relation(fields: [paperQuestionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, studentId, paperQuestionId])
   @@index([paperQuestionId, submittedAt])
+}
+
+model ClassDefenseSession {
+  id            String    @id @default(cuid())
+  teacherId     String
+  className     String
+  paperId       String?
+  status        String    @default("PENDING")
+  classHp       Int
+  maxClassHp    Int
+  reviveSeconds Int       @default(30)
+  configJson    String
+  stateVersion  Int       @default(0)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  participants ClassDefenseParticipant[]
+  monsters     ClassDefenseMonster[]
+  combats      ClassDefenseCombat[]
+  answers      ClassDefenseAnswer[]
+  events       ClassDefenseEvent[]
+
+  @@index([teacherId, createdAt])
+  @@index([className, status])
+}
+
+model ClassDefenseMonsterType {
+  id         String   @id @default(cuid())
+  teacherId  String
+  teacher    User     @relation("TeacherClassDefenseMonsterTypes", fields: [teacherId], references: [id], onDelete: Cascade)
+  name       String
+  baseHp     Int
+  baseAttack Int
+  baseSpeed  Float
+  imagePath  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([teacherId, createdAt])
+}
+
+model ClassDefenseParticipant {
+  id          String              @id @default(cuid())
+  sessionId   String
+  session     ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId   String
+  status      String              @default("ALIVE")
+  hp          Int
+  maxHp       Int
+  reviveAt    DateTime?
+  connectedAt DateTime?
+  lastSeenAt  DateTime?
+  joinedAt    DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId, status])
+  @@index([studentId, joinedAt])
+}
+
+model ClassDefenseMonster {
+  id                String              @id @default(cuid())
+  sessionId         String
+  session           ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  waveIndex         Int
+  monsterKey        String
+  monsterName       String?
+  monsterLevel      Int                 @default(1)
+  imagePath         String?
+  status            String              @default("WALKING")
+  hp                Int
+  maxHp             Int
+  attack            Int
+  speed             Float
+  routeProgress     Float               @default(0)
+  lockedByStudentId String?
+  lockExpiresAt     DateTime?
+  reachedAt         DateTime?
+  killedAt          DateTime?
+  spawnedAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  combats ClassDefenseCombat[]
+  answers ClassDefenseAnswer[]
+
+  @@index([sessionId, status])
+  @@index([sessionId, lockedByStudentId])
+}
+
+model ClassDefenseCombat {
+  id              String              @id @default(cuid())
+  sessionId       String
+  session         ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  monsterId       String
+  monster         ClassDefenseMonster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  studentId       String
+  paperQuestionId String
+  status          String              @default("ACTIVE")
+  startedAt       DateTime            @default(now())
+  expiresAt       DateTime?
+  endedAt         DateTime?
+  isCorrect       Boolean?
+  damageToMonster Int?
+  damageToStudent Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  answers ClassDefenseAnswer[]
+
+  @@index([sessionId, studentId, status])
+  @@index([monsterId, status])
+}
+
+model ClassDefenseAnswer {
+  id              String              @id @default(cuid())
+  combatId        String
+  combat          ClassDefenseCombat  @relation(fields: [combatId], references: [id], onDelete: Cascade)
+  sessionId       String
+  session         ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId       String
+  monsterId       String
+  monster         ClassDefenseMonster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  roundIndex      Int                 @default(1)
+  paperQuestionId String
+  answer          String
+  isCorrect       Boolean
+  submittedAt     DateTime            @default(now())
+
+  @@index([combatId, roundIndex])
+  @@index([sessionId, studentId, submittedAt])
+  @@index([sessionId, monsterId])
+}
+
+model ClassDefenseEvent {
+  id           String              @id @default(cuid())
+  sessionId    String
+  session      ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type         String
+  payload      String
+  stateVersion Int
+  createdAt    DateTime            @default(now())
+
+  @@index([sessionId, stateVersion])
+  @@index([sessionId, createdAt])
 }
 
 model ChallengeChapterUnlock {
@@ -341,9 +488,9 @@ model ChallengeLevelUnlock {
 }
 
 model ChallengeProgress {
-  id                 String   @id @default(cuid())
-  status             String   @default("IN_PROGRESS")
-  attemptCount       Int      @default(0)
+  id                 String    @id @default(cuid())
+  status             String    @default("IN_PROGRESS")
+  attemptCount       Int       @default(0)
   latestCode         String?
   latestJudgeMessage String?
   latestStdout       String?
@@ -351,12 +498,12 @@ model ChallengeProgress {
   latestSubmittedAt  DateTime?
   firstPassedAt      DateTime?
   passedAt           DateTime?
-  awardedPoints      Float    @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  awardedPoints      Float     @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   studentId  String
-  student    User     @relation("StudentChallengeProgresses", fields: [studentId], references: [id], onDelete: Cascade)
+  student    User   @relation("StudentChallengeProgresses", fields: [studentId], references: [id], onDelete: Cascade)
   chapterKey String
   levelKey   String
 
@@ -377,7 +524,7 @@ model ChallengeSubmission {
   createdAt     DateTime @default(now())
 
   studentId  String
-  student    User     @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+  student    User   @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
   chapterKey String
   levelKey   String
 
@@ -392,13 +539,13 @@ model ChallengeSubmitCooldown {
 }
 
 model GodotSessionBootstrap {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  clientType String   @default("GODOT")
+  id         String    @id @default(cuid())
+  code       String    @unique
+  clientType String    @default("GODOT")
   targetPath String
   expiresAt  DateTime
   usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   userId String
   user   User   @relation("UserGodotSessionBootstraps", fields: [userId], references: [id], onDelete: Cascade)

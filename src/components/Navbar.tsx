@@ -73,6 +73,7 @@ export default function Navbar() {
                 <>
                   <Link href="/teacher" className="hover:text-gray-300">作业管理</Link>
                   <Link href="/teacher/challenges" className="hover:text-gray-300">代码闯关</Link>
+                  <Link href="/teacher/class-defense" className="hover:text-gray-300">守护班级</Link>
                   <Link href="/teacher/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/teacher/questions" className="hover:text-gray-300">试题管理</Link>
                   <Link href="/teacher/students" className="hover:text-gray-300">学生管理</Link>

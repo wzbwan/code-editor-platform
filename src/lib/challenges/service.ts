@@ -2,9 +2,161 @@ import { prisma } from '@/lib/prisma'
 import { getAllChallengeChapters, getChallengeChapter, getChallengeLevel } from '@/lib/challenges/registry'
 import { createStudentPointRecordWithTx } from '@/lib/student-points'
 import { POINT_SOURCE } from '@/lib/constants'
+import { ChallengeJudgeResult, ChallengeValue } from '@/lib/challenges/types'
+
+const VARIABLE_START_MARKER = '__CODEX_CHALLENGE_VARIABLES_START__'
+const VARIABLE_END_MARKER = '__CODEX_CHALLENGE_VARIABLES_END__'
+
+export interface SubmittedVariableResult {
+  missing: boolean
+  value?: ChallengeValue
+  nonJson?: boolean
+}
+
+export interface GodotChallengeExecutionInput {
+  stdout: string
+  stderr: string
+  exitCode?: number | null
+  timedOut?: boolean
+  variables?: Record<string, SubmittedVariableResult> | null
+}
 
 function normalizeClassName(value?: string | null) {
   return value?.trim() || ''
+}
+
+function normalizeOutput(value: string) {
+  return value.replace(/\r\n/g, '\n').trim()
+}
+
+function isChallengeRecord(value: ChallengeValue): value is { [key: string]: ChallengeValue } {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function challengeValuesEqual(left: ChallengeValue, right: ChallengeValue): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false
+    }
+
+    return left.every((item, index) => challengeValuesEqual(item, right[index]))
+  }
+
+  if (isChallengeRecord(left) || isChallengeRecord(right)) {
+    if (!isChallengeRecord(left) || !isChallengeRecord(right)) {
+      return false
+    }
+
+    const leftKeys = Object.keys(left).sort()
+    const rightKeys = Object.keys(right).sort()
+    if (!challengeValuesEqual(leftKeys, rightKeys)) {
+      return false
+    }
+
+    return leftKeys.every((key) => challengeValuesEqual(left[key], right[key]))
+  }
+
+  return left === right
+}
+
+function buildGodotVariableProbeScript(variableNames: string[]) {
+  const variableNamesJson = JSON.stringify(variableNames, null, 0)
+
+  return `
+import json
+
+def __challenge_normalize(value):
+    if isinstance(value, set):
+        normalized_items = [__challenge_normalize(item) for item in value]
+        return sorted(
+            normalized_items,
+            key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True)
+        )
+    if isinstance(value, tuple):
+        return [__challenge_normalize(item) for item in value]
+    if isinstance(value, list):
+        return [__challenge_normalize(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): __challenge_normalize(item)
+            for key, item in value.items()
+        }
+    return value
+
+__challenge_result = {}
+for __challenge_name in ${variableNamesJson}:
+    if __challenge_name in globals():
+        try:
+            __challenge_value = __challenge_normalize(globals()[__challenge_name])
+            json.dumps(__challenge_value, ensure_ascii=False)
+            __challenge_result[__challenge_name] = {
+                "missing": False,
+                "value": __challenge_value,
+            }
+        except TypeError:
+            __challenge_result[__challenge_name] = {
+                "missing": False,
+                "value": repr(globals()[__challenge_name]),
+                "nonJson": True,
+            }
+    else:
+        __challenge_result[__challenge_name] = {
+            "missing": True,
+        }
+
+print("${VARIABLE_START_MARKER}")
+print(json.dumps(__challenge_result, ensure_ascii=False))
+print("${VARIABLE_END_MARKER}")
+`
+}
+
+export function parseGodotVariableProbeOutput(stdout: string) {
+  const startIndex = stdout.lastIndexOf(VARIABLE_START_MARKER)
+  const endIndex = stdout.lastIndexOf(VARIABLE_END_MARKER)
+
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return {
+      stdout,
+      variables: null as Record<string, SubmittedVariableResult> | null,
+    }
+  }
+
+  const rawPayload = stdout
+    .slice(startIndex + VARIABLE_START_MARKER.length, endIndex)
+    .trim()
+  const visibleStdout = `${stdout.slice(0, startIndex)}${stdout.slice(
+    endIndex + VARIABLE_END_MARKER.length
+  )}`.trim()
+
+  try {
+    return {
+      stdout: visibleStdout,
+      variables: JSON.parse(rawPayload) as Record<string, SubmittedVariableResult>,
+    }
+  } catch {
+    return {
+      stdout: visibleStdout,
+      variables: null,
+    }
+  }
+}
+
+function buildGodotPublicJudge(level: NonNullable<ReturnType<typeof getChallengeLevel>>) {
+  if (level.judge.mode === 'VARIABLES') {
+    const variableNames = Object.keys(level.judge.expectedVariables)
+
+    return {
+      mode: 'VARIABLES' as const,
+      variableNames,
+      variableStartMarker: VARIABLE_START_MARKER,
+      variableEndMarker: VARIABLE_END_MARKER,
+      variableProbeScript: buildGodotVariableProbeScript(variableNames),
+    }
+  }
+
+  return {
+    mode: 'OUTPUT' as const,
+  }
 }
 
 function buildLevelAccessState(params: {
@@ -248,6 +400,150 @@ export async function getStudentChallengeLevelView(
     previousLevel,
     nextLevel,
   }
+}
+
+export async function getStudentChallengeLevelViewForGodot(
+  studentId: string,
+  chapterKey: string,
+  levelKey: string
+) {
+  const view = await getStudentChallengeLevelView(studentId, chapterKey, levelKey)
+  const levelDefinition = getChallengeLevel(chapterKey, levelKey)
+  if (!view || !levelDefinition) {
+    return null
+  }
+
+  const { judge: _judge, ...level } = view.level
+
+  return {
+    ...view,
+    level: {
+      ...level,
+      publicJudge: buildGodotPublicJudge(levelDefinition),
+    },
+  }
+}
+
+export function judgeChallengeExecutionResult(input: {
+  chapterKey: string
+  levelKey: string
+  code: string
+  execution: GodotChallengeExecutionInput
+}): ChallengeJudgeResult {
+  const level = getChallengeLevel(input.chapterKey, input.levelKey)
+  if (!level) {
+    throw new Error('关卡不存在')
+  }
+
+  if (!input.code.trim()) {
+    return {
+      passed: false,
+      message: '代码不能为空。',
+      stdout: input.execution.stdout,
+      stderr: input.execution.stderr,
+    }
+  }
+
+  if (input.execution.timedOut) {
+    return {
+      passed: false,
+      message: '代码执行超时，请检查是否出现死循环。',
+      stdout: input.execution.stdout,
+      stderr: input.execution.stderr,
+    }
+  }
+
+  if (typeof input.execution.exitCode === 'number' && input.execution.exitCode !== 0) {
+    return {
+      passed: false,
+      message: '代码未正常执行完成，请先修复运行错误。',
+      stdout: input.execution.stdout,
+      stderr: input.execution.stderr,
+    }
+  }
+
+  if (level.judge.mode === 'VARIABLES') {
+    if (!input.execution.variables) {
+      return {
+        passed: false,
+        message: '缺少变量判题结果，请先用本地运行器执行带探针的代码。',
+        stdout: input.execution.stdout,
+        stderr: input.execution.stderr,
+      }
+    }
+
+    for (const [variableName, expectedValue] of Object.entries(level.judge.expectedVariables)) {
+      const actual = input.execution.variables[variableName]
+      if (!actual || actual.missing) {
+        return {
+          passed: false,
+          message: `缺少变量 ${variableName}，请按要求保存结果。`,
+          stdout: input.execution.stdout,
+          stderr: input.execution.stderr,
+        }
+      }
+
+      if (actual.nonJson) {
+        return {
+          passed: false,
+          message: `变量 ${variableName} 的结果无法判定，请使用基础类型或列表保存结果。`,
+          stdout: input.execution.stdout,
+          stderr: input.execution.stderr,
+        }
+      }
+
+      if (!challengeValuesEqual((actual.value ?? null) as ChallengeValue, expectedValue)) {
+        return {
+          passed: false,
+          message: `变量 ${variableName} 的结果不正确。`,
+          stdout: input.execution.stdout,
+          stderr: input.execution.stderr,
+        }
+      }
+    }
+
+    return {
+      passed: true,
+      message: '恭喜通关，结果正确。',
+      stdout: input.execution.stdout,
+      stderr: input.execution.stderr,
+    }
+  }
+
+  if (normalizeOutput(input.execution.stdout) !== normalizeOutput(level.judge.expectedOutput)) {
+    return {
+      passed: false,
+      message: '输出结果不正确，请对照题目要求检查输出顺序和格式。',
+      stdout: input.execution.stdout,
+      stderr: input.execution.stderr,
+    }
+  }
+
+  return {
+    passed: true,
+    message: '恭喜通关，输出结果正确。',
+    stdout: input.execution.stdout,
+    stderr: input.execution.stderr,
+  }
+}
+
+export async function submitStudentChallengeExecution(
+  studentId: string,
+  input: {
+    chapterKey: string
+    levelKey: string
+    code: string
+    execution: GodotChallengeExecutionInput
+  }
+) {
+  const judgeResult = judgeChallengeExecutionResult(input)
+
+  return submitStudentChallenge(studentId, {
+    chapterKey: input.chapterKey,
+    levelKey: input.levelKey,
+    code: input.code,
+    judgeResult,
+  })
 }
 
 export async function submitStudentChallenge(

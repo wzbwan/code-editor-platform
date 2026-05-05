@@ -7,6 +7,7 @@ export const POINT_SOURCE = {
   WEB: 'WEB',
   MOBILE_API: 'MOBILE_API',
   CHALLENGE: 'CHALLENGE',
+  CLASS_DEFENSE: 'CLASS_DEFENSE',
 } as const
 
 export const QUESTION_TYPES = {
