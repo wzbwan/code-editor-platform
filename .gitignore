@@ -11,4 +11,5 @@ local-runner/dist/
 local-runner/.gocache/
 local-runner/runner-data/
 local-runner/.env
-backups
+backups.env.backup
+*.bak
