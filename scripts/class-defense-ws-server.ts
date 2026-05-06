@@ -2,15 +2,23 @@ import { WebSocket, WebSocketServer } from 'ws'
 import { parseClassDefenseConfig } from '@/lib/class-defense/config'
 import { verifyClassDefenseWsTicket } from '@/lib/class-defense/auth'
 import {
+  getClassDefenseDirectionDefenders,
+  getClassDefenseDirectionSummary,
   getActiveClassDefenseSessionForStudent,
   getClassDefenseSnapshot,
   fleeClassDefenseCombat,
   joinClassDefenseSession,
   markClassDefenseHeartbeat,
+  selectClassDefenseDirection,
   startClassDefenseCombat,
   submitClassDefenseAnswer,
   tickClassDefenseSession,
 } from '@/lib/class-defense/service'
+import {
+  CLASS_DEFENSE_DIRECTION_IDS,
+  CLASS_DEFENSE_MONSTER_STATUS,
+  type ClassDefenseDirectionId,
+} from '@/lib/class-defense/constants'
 import { prisma } from '@/lib/prisma'
 
 interface ClientState {
@@ -19,6 +27,7 @@ interface ClientState {
   sessionId: string | null
   studentId: string | null
   username: string | null
+  directionId: ClassDefenseDirectionId | null
 }
 
 interface ClientMessage {
@@ -29,13 +38,31 @@ interface ClientMessage {
   monsterId?: string
   combatId?: string
   answer?: string
+  directionId?: string | null
+  timeout?: boolean
+  reason?: string
 }
 
 const port = Number.parseInt(process.env.CLASS_DEFENSE_WS_PORT || '3001', 10)
+const host = process.env.CLASS_DEFENSE_WS_HOST || '127.0.0.1'
 const clients = new Map<WebSocket, ClientState>()
 const roomClients = new Map<string, Set<WebSocket>>()
 const roomTimers = new Map<string, NodeJS.Timeout>()
 const tickingRooms = new Set<string>()
+const roomMonsterStates = new Map<string, Map<string, MonsterBroadcastView>>()
+
+interface MonsterBroadcastView {
+  id: string
+  directionId: ClassDefenseDirectionId
+  waveIndex: number
+  laneIndex: number
+  monsterKey: string
+  status: string
+  hp: number
+  maxHp: number
+  routeProgress: number
+  lockedByStudentId: string | null
+}
 
 function clientId() {
   return Math.random().toString(36).slice(2)
@@ -66,6 +93,208 @@ function broadcast(sessionId: string, payload: unknown) {
   }
 }
 
+function isClassDefenseDirectionId(value: unknown): value is ClassDefenseDirectionId {
+  return CLASS_DEFENSE_DIRECTION_IDS.includes(String(value ?? '') as ClassDefenseDirectionId)
+}
+
+function parseOptionalDirectionId(value: unknown) {
+  if (value === null) {
+    return null
+  }
+
+  const directionId = String(value ?? '').trim()
+  if (!directionId) {
+    return null
+  }
+
+  if (!isClassDefenseDirectionId(directionId)) {
+    throw new Error('方向不存在')
+  }
+
+  return directionId
+}
+
+function broadcastDirection(sessionId: string, directionId: ClassDefenseDirectionId, payload: unknown) {
+  const sockets = roomClients.get(sessionId)
+  if (!sockets) {
+    return
+  }
+
+  for (const ws of Array.from(sockets)) {
+    const state = clients.get(ws)
+    if (state?.directionId === directionId) {
+      send(ws, payload)
+    }
+  }
+}
+
+function sendToStudent(sessionId: string, studentId: string, payload: unknown) {
+  const sockets = roomClients.get(sessionId)
+  if (!sockets) {
+    return
+  }
+
+  for (const ws of Array.from(sockets)) {
+    const state = clients.get(ws)
+    if (state?.studentId === studentId) {
+      send(ws, payload)
+    }
+  }
+}
+
+async function broadcastDirectionSummary(sessionId: string) {
+  const summary = await getClassDefenseDirectionSummary(sessionId)
+  broadcast(sessionId, {
+    type: 'direction_summary',
+    data: summary,
+  })
+}
+
+async function broadcastDirectionSnapshot(sessionId: string, directionId: ClassDefenseDirectionId) {
+  const snapshot = await getClassDefenseSnapshot(sessionId, null, directionId)
+  broadcastDirection(sessionId, directionId, {
+    type: 'direction_snapshot',
+    requestId: null,
+    data: snapshot,
+  })
+}
+
+async function broadcastDirectionDefenders(sessionId: string, directionId: ClassDefenseDirectionId) {
+  const defenders = await getClassDefenseDirectionDefenders(sessionId, directionId)
+  broadcastDirection(sessionId, directionId, {
+    type: 'direction_defenders',
+    data: defenders,
+  })
+}
+
+async function getMonsterDirection(sessionId: string, monsterId: string) {
+  const monster = await prisma.classDefenseMonster.findFirst({
+    where: {
+      id: monsterId,
+      sessionId,
+    },
+    select: {
+      directionId: true,
+    },
+  })
+
+  return isClassDefenseDirectionId(monster?.directionId) ? monster.directionId : null
+}
+
+async function getActiveMonsterViews(sessionId: string) {
+  const monsters = await prisma.classDefenseMonster.findMany({
+    where: {
+      sessionId,
+      status: {
+        in: [
+          CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+          CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+        ],
+      },
+    },
+    orderBy: [
+      { directionId: 'asc' },
+      { waveIndex: 'asc' },
+      { laneIndex: 'asc' },
+      { id: 'asc' },
+    ],
+    select: {
+      id: true,
+      directionId: true,
+      waveIndex: true,
+      laneIndex: true,
+      monsterKey: true,
+      status: true,
+      hp: true,
+      maxHp: true,
+      routeProgress: true,
+      lockedByStudentId: true,
+    },
+  })
+
+  return monsters
+    .filter((monster): monster is typeof monster & { directionId: ClassDefenseDirectionId } =>
+      isClassDefenseDirectionId(monster.directionId)
+    )
+    .map((monster) => ({
+      ...monster,
+      lockedByStudentId: monster.lockedByStudentId || null,
+    }))
+}
+
+async function refreshMonsterState(sessionId: string) {
+  const monsters = await getActiveMonsterViews(sessionId)
+  roomMonsterStates.set(
+    sessionId,
+    new Map(monsters.map((monster) => [monster.id, monster]))
+  )
+}
+
+function buildMonsterPatch(previous: MonsterBroadcastView, next: MonsterBroadcastView) {
+  const patch: Partial<Pick<
+    MonsterBroadcastView,
+    'hp' | 'status' | 'routeProgress' | 'lockedByStudentId'
+  >> = {}
+
+  if (previous.hp !== next.hp) patch.hp = next.hp
+  if (previous.status !== next.status) patch.status = next.status
+  if (previous.routeProgress !== next.routeProgress) patch.routeProgress = next.routeProgress
+  if (previous.lockedByStudentId !== next.lockedByStudentId) {
+    patch.lockedByStudentId = next.lockedByStudentId
+  }
+
+  return patch
+}
+
+async function broadcastMonsterDiffs(sessionId: string) {
+  const previous = roomMonsterStates.get(sessionId) || new Map<string, MonsterBroadcastView>()
+  const nextMonsters = await getActiveMonsterViews(sessionId)
+  const next = new Map(nextMonsters.map((monster) => [monster.id, monster]))
+
+  for (const monster of nextMonsters) {
+    const existing = previous.get(monster.id)
+    if (!existing) {
+      broadcastDirection(sessionId, monster.directionId, {
+        type: 'monster_spawned',
+        data: {
+          directionId: monster.directionId,
+          monster,
+        },
+      })
+      continue
+    }
+
+    const patch = buildMonsterPatch(existing, monster)
+    if (Object.keys(patch).length > 0) {
+      broadcastDirection(sessionId, monster.directionId, {
+        type: 'monster_updated',
+        data: {
+          directionId: monster.directionId,
+          monsterId: monster.id,
+          patch,
+        },
+      })
+    }
+  }
+
+  for (const monster of Array.from(previous.values())) {
+    if (next.has(monster.id)) {
+      continue
+    }
+
+    broadcastDirection(sessionId, monster.directionId, {
+      type: 'monster_removed',
+      data: {
+        directionId: monster.directionId,
+        monsterId: monster.id,
+        reason: 'REMOVED',
+      },
+    })
+  }
+
+  roomMonsterStates.set(sessionId, next)
+}
+
 function addToRoom(sessionId: string, ws: WebSocket) {
   const current = roomClients.get(sessionId) || new Set<WebSocket>()
   current.add(ws)
@@ -86,7 +315,27 @@ function removeFromRoom(sessionId: string, ws: WebSocket) {
       clearInterval(timer)
       roomTimers.delete(sessionId)
     }
+    roomMonsterStates.delete(sessionId)
   }
+}
+
+function hasOtherStudentSocket(sessionId: string, studentId: string, ws: WebSocket) {
+  const sockets = roomClients.get(sessionId)
+  if (!sockets) {
+    return false
+  }
+
+  for (const socket of Array.from(sockets)) {
+    if (socket === ws) {
+      continue
+    }
+    const state = clients.get(socket)
+    if (state?.studentId === studentId) {
+      return true
+    }
+  }
+
+  return false
 }
 
 async function getTickMs(sessionId: string) {
@@ -97,14 +346,6 @@ async function getTickMs(sessionId: string) {
   return parseClassDefenseConfig(session?.configJson).tickMs
 }
 
-async function broadcastSnapshot(sessionId: string) {
-  const snapshot = await getClassDefenseSnapshot(sessionId)
-  broadcast(sessionId, {
-    type: 'session_snapshot',
-    data: snapshot,
-  })
-}
-
 async function tickRoom(sessionId: string) {
   if (tickingRooms.has(sessionId)) {
     return
@@ -112,12 +353,35 @@ async function tickRoom(sessionId: string) {
 
   tickingRooms.add(sessionId)
   try {
-    const snapshot = await tickClassDefenseSession(sessionId)
-    if (snapshot) {
+    const tickResult = await tickClassDefenseSession(sessionId)
+    if (tickResult) {
+      for (const result of tickResult.combatResults) {
+        sendToStudent(sessionId, result.studentId, {
+          type: 'combat_result',
+          requestId: null,
+          data: result,
+        })
+      }
+      for (const cancellation of tickResult.combatCancellations) {
+        sendToStudent(sessionId, cancellation.studentId, {
+          type: 'combat_cancelled',
+          requestId: null,
+          data: cancellation,
+        })
+      }
       broadcast(sessionId, {
-        type: 'session_snapshot',
-        data: snapshot,
+        type: 'direction_summary',
+        data: tickResult.summary,
       })
+      await broadcastMonsterDiffs(sessionId)
+      const directions = new Set(
+        Array.from(clients.values())
+          .filter((client) => client.sessionId === sessionId && client.directionId)
+          .map((client) => client.directionId as ClassDefenseDirectionId)
+      )
+      for (const directionId of Array.from(directions)) {
+        await broadcastDirectionSnapshot(sessionId, directionId)
+      }
     }
   } catch (error) {
     console.error(`[class-defense-ws] tick failed for ${sessionId}`, error)
@@ -136,6 +400,7 @@ async function ensureRoomTicker(sessionId: string) {
     void tickRoom(sessionId)
   }, tickMs)
   roomTimers.set(sessionId, timer)
+  await refreshMonsterState(sessionId)
 }
 
 async function handleJoin(ws: WebSocket, state: ClientState, message: ClientMessage) {
@@ -156,17 +421,24 @@ async function handleJoin(ws: WebSocket, state: ClientState, message: ClientMess
   }
 
   const joined = await joinClassDefenseSession(sessionId, verified.id)
+  const directionId = parseOptionalDirectionId(message.directionId ?? null)
 
   if (state.sessionId) {
     removeFromRoom(state.sessionId, ws)
   }
+  const snapshot = await selectClassDefenseDirection({
+    sessionId,
+    studentId: verified.id,
+    directionId,
+  })
+
   state.sessionId = sessionId
   state.studentId = verified.id
   state.username = verified.username
+  state.directionId = directionId
   addToRoom(sessionId, ws)
   await ensureRoomTicker(sessionId)
 
-  const snapshot = await getClassDefenseSnapshot(sessionId, verified.id)
   send(ws, {
     type: 'joined',
     requestId: message.requestId || null,
@@ -185,6 +457,10 @@ async function handleJoin(ws: WebSocket, state: ClientState, message: ClientMess
       battleStats: joined.battleStats,
     },
   })
+  await broadcastDirectionSummary(sessionId)
+  if (directionId) {
+    await broadcastDirectionDefenders(sessionId, directionId)
+  }
 }
 
 async function handleAttack(ws: WebSocket, state: ClientState, message: ClientMessage) {
@@ -208,7 +484,41 @@ async function handleAttack(ws: WebSocket, state: ClientState, message: ClientMe
     requestId: message.requestId || null,
     data: combat,
   })
-  await broadcastSnapshot(state.sessionId)
+  const directionId = await getMonsterDirection(state.sessionId, monsterId)
+  await broadcastDirectionSummary(state.sessionId)
+  await broadcastMonsterDiffs(state.sessionId)
+  if (directionId) {
+    await broadcastDirectionSnapshot(state.sessionId, directionId)
+  }
+}
+
+async function handleSelectDirection(ws: WebSocket, state: ClientState, message: ClientMessage) {
+  if (!state.sessionId || !state.studentId) {
+    throw new Error('请先进入守护班级')
+  }
+
+  const previousDirectionId = state.directionId
+  const directionId = parseOptionalDirectionId(message.directionId ?? null)
+  const snapshot = await selectClassDefenseDirection({
+    sessionId: state.sessionId,
+    studentId: state.studentId,
+    directionId,
+  })
+
+  state.directionId = directionId
+  send(ws, {
+    type: 'direction_snapshot',
+    requestId: message.requestId || null,
+    data: snapshot,
+  })
+  await broadcastDirectionSummary(state.sessionId)
+
+  if (previousDirectionId && previousDirectionId !== directionId) {
+    await broadcastDirectionDefenders(state.sessionId, previousDirectionId)
+  }
+  if (directionId) {
+    await broadcastDirectionDefenders(state.sessionId, directionId)
+  }
 }
 
 async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: ClientMessage) {
@@ -224,7 +534,7 @@ async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: Cl
   const result = await submitClassDefenseAnswer({
     combatId,
     studentId: state.studentId,
-    answer: String(message.answer ?? ''),
+    answer: message.timeout ? '__TIMEOUT__' : String(message.answer ?? ''),
   })
 
   send(ws, {
@@ -232,7 +542,12 @@ async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: Cl
     requestId: message.requestId || null,
     data: result,
   })
-  await broadcastSnapshot(state.sessionId)
+  const directionId = await getMonsterDirection(state.sessionId, result.monsterId)
+  await broadcastDirectionSummary(state.sessionId)
+  await broadcastMonsterDiffs(state.sessionId)
+  if (directionId) {
+    await broadcastDirectionSnapshot(state.sessionId, directionId)
+  }
 }
 
 async function handleFleeCombat(ws: WebSocket, state: ClientState, message: ClientMessage) {
@@ -263,7 +578,12 @@ async function handleFleeCombat(ws: WebSocket, state: ClientState, message: Clie
   })
 
   if (result.success) {
-    await broadcastSnapshot(state.sessionId)
+    const directionId = await getMonsterDirection(state.sessionId, result.monsterId)
+    await broadcastDirectionSummary(state.sessionId)
+    await broadcastMonsterDiffs(state.sessionId)
+    if (directionId) {
+      await broadcastDirectionSnapshot(state.sessionId, directionId)
+    }
   }
 }
 
@@ -297,6 +617,11 @@ async function handleMessage(ws: WebSocket, state: ClientState, raw: WebSocket.R
     return
   }
 
+  if (message.type === 'select_direction') {
+    await handleSelectDirection(ws, state, message)
+    return
+  }
+
   if (message.type === 'submit_answer') {
     await handleSubmitAnswer(ws, state, message)
     return
@@ -315,7 +640,7 @@ async function handleMessage(ws: WebSocket, state: ClientState, raw: WebSocket.R
   throw new Error('不支持的消息类型')
 }
 
-const wss = new WebSocketServer({ port })
+const wss = new WebSocketServer({ host, port })
 
 wss.on('connection', (ws) => {
   const state: ClientState = {
@@ -324,6 +649,7 @@ wss.on('connection', (ws) => {
     sessionId: null,
     studentId: null,
     username: null,
+    directionId: null,
   }
   clients.set(ws, state)
 
@@ -348,20 +674,62 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    const sessionId = state.sessionId
+    const studentId = state.studentId
+    const directionId = state.directionId
+    const shouldClearDirection = Boolean(
+      sessionId &&
+        studentId &&
+        directionId &&
+        !hasOtherStudentSocket(sessionId, studentId, ws)
+    )
+
     clients.delete(ws)
-    if (state.sessionId) {
-      removeFromRoom(state.sessionId, ws)
+    if (sessionId) {
+      removeFromRoom(sessionId, ws)
+    }
+
+    if (shouldClearDirection && sessionId && studentId && directionId) {
+      void selectClassDefenseDirection({ sessionId, studentId, directionId: null })
+        .then(async () => {
+          await broadcastDirectionSummary(sessionId)
+          await broadcastDirectionDefenders(sessionId, directionId)
+        })
+        .catch((error) => {
+          console.error('[class-defense-ws] clear direction failed', error)
+        })
     }
   })
 })
 
-process.on('SIGINT', async () => {
+async function shutdown() {
   for (const timer of Array.from(roomTimers.values())) {
     clearInterval(timer)
   }
   wss.close()
   await prisma.$disconnect()
+}
+
+wss.on('listening', () => {
+  console.log(`[class-defense-ws] listening on ws://${host}:${port}`)
+})
+
+wss.on('error', async (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`[class-defense-ws] ${host}:${port} 已被占用，请停止旧进程或设置 CLASS_DEFENSE_WS_PORT`)
+  } else {
+    console.error('[class-defense-ws] server failed', error)
+  }
+  await shutdown()
+  process.exit(1)
+})
+
+process.on('SIGINT', async () => {
+  await shutdown()
   process.exit(0)
 })
 
-console.log(`[class-defense-ws] listening on ws://localhost:${port}`)
+process.on('SIGTERM', async () => {
+  await shutdown()
+  process.exit(0)
+})

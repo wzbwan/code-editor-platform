@@ -7,10 +7,13 @@ import { calculatePetStats } from '@/lib/pets/service'
 import { getPetSpecies } from '@/lib/pets/registry'
 import {
   CLASS_DEFENSE_COMBAT_STATUS,
+  CLASS_DEFENSE_DIRECTIONS,
+  CLASS_DEFENSE_DIRECTION_IDS,
   CLASS_DEFENSE_EVENT_TYPE,
   CLASS_DEFENSE_MONSTER_STATUS,
   CLASS_DEFENSE_PARTICIPANT_STATUS,
   CLASS_DEFENSE_SESSION_STATUS,
+  type ClassDefenseDirectionId,
 } from '@/lib/class-defense/constants'
 import {
   parseClassDefenseConfig,
@@ -40,8 +43,66 @@ interface ClassDefenseBattleStats {
   }
 }
 
+type ClassDefenseCombatWithSessionMonster = Prisma.ClassDefenseCombatGetPayload<{
+  include: {
+    session: true
+    monster: true
+  }
+}>
+
+interface ClassDefenseCombatResult {
+  combatId: string
+  sessionId: string
+  monsterId: string
+  studentId: string
+  roundIndex: number
+  isCorrect: boolean
+  damageToMonster: number
+  damageToStudent: number
+  isCritical: boolean
+  isDodged: boolean
+  battleStats: ClassDefenseBattleStats
+  monsterHp: number
+  monsterKilled: boolean
+  studentHp: number
+  studentDown: boolean
+  battleEnded: boolean
+  nextQuestion: ReturnType<typeof publicQuestion> | null
+  reviveAt: Date | null
+}
+
+interface ClassDefenseCombatCancellation {
+  combatId: string
+  sessionId: string
+  monsterId: string
+  studentId: string
+  reason: string
+}
+
 function normalizeClassName(value?: string | null) {
   return value?.trim() || ''
+}
+
+function isClassDefenseDirectionId(value: unknown): value is ClassDefenseDirectionId {
+  return CLASS_DEFENSE_DIRECTION_IDS.includes(String(value ?? '') as ClassDefenseDirectionId)
+}
+
+function requireClassDefenseDirectionId(value: unknown) {
+  const directionId = String(value ?? '').trim()
+  if (!isClassDefenseDirectionId(directionId)) {
+    throw new Error('方向不存在')
+  }
+
+  return directionId
+}
+
+function assertDirectionEnabled(
+  directionId: ClassDefenseDirectionId,
+  enabledDirections: ClassDefenseDirectionId[]
+) {
+  if (!enabledDirections.includes(directionId)) {
+    throw new Error('该方向未开启')
+  }
 }
 
 function getStudentClassQuery(className: string) {
@@ -113,6 +174,34 @@ function pickQuestion<T>(questions: T[]) {
   }
 
   return questions[Math.floor(Math.random() * questions.length)]
+}
+
+function getWaveQuestionPool<T>(
+  questions: T[],
+  config: ClassDefenseConfig,
+  waveIndex: number
+) {
+  if (questions.length === 0) {
+    return []
+  }
+
+  const waveIndexes = Array.from(new Set(config.waves.map((wave) => wave.waveIndex)))
+    .sort((a, b) => a - b)
+  const waveCount = Math.max(1, waveIndexes.length)
+  const matchedPosition = waveIndexes.indexOf(waveIndex)
+  const wavePosition = matchedPosition >= 0 ? matchedPosition : 0
+  const start = Math.floor((questions.length * wavePosition) / waveCount)
+  const end = Math.ceil((questions.length * (wavePosition + 1)) / waveCount)
+
+  return questions.slice(start, Math.max(start + 1, end))
+}
+
+function pickQuestionForWave<T>(
+  questions: T[],
+  config: ClassDefenseConfig,
+  waveIndex: number
+) {
+  return pickQuestion(getWaveQuestionPool(questions, config, waveIndex))
 }
 
 function rollPercent(rate: number) {
@@ -297,7 +386,6 @@ async function resolveClassDefenseConfig(
             quantity?: unknown
           }>
         }>
-        spawnIntervalSeconds?: unknown
       }
     : {}
 
@@ -325,11 +413,9 @@ async function resolveClassDefenseConfig(
     },
   })
   const monsterTypeById = new Map(monsterTypes.map((monster) => [monster.id, monster] as const))
-  const spawnIntervalSeconds = asNonNegativeInt(raw.spawnIntervalSeconds, 4)
 
   const waves = (raw.waves || [])
     .map((wave, waveIndex) => {
-      let nextSpawnDelaySeconds = 0
       const monsters = (wave.monsters || []).flatMap((selection) => {
         const monsterTypeId = String(selection.monsterTypeId ?? '').trim()
         const monsterType = monsterTypeById.get(monsterTypeId)
@@ -343,9 +429,6 @@ async function resolveClassDefenseConfig(
         const stats = calculateClassDefenseMonsterStats(monsterType, level)
 
         return Array.from({ length: quantity }, () => {
-          const spawnDelaySeconds = nextSpawnDelaySeconds
-          nextSpawnDelaySeconds += spawnIntervalSeconds
-
           return {
             monsterKey: monsterType.id,
             monsterName: monsterType.name,
@@ -354,14 +437,14 @@ async function resolveClassDefenseConfig(
             hp: stats.hp,
             attack: stats.attack,
             speed: stats.speed,
-            spawnDelaySeconds,
+            spawnDelaySeconds: 0,
           }
         })
       })
 
       return {
         waveIndex: asNonNegativeInt(wave.waveIndex, waveIndex),
-        startDelaySeconds: asNonNegativeInt(wave.startDelaySeconds, waveIndex === 0 ? 1 : waveIndex * 30 + 1),
+        startDelaySeconds: waveIndex === 0 ? asNonNegativeInt(wave.startDelaySeconds, 1) : 1,
         monsters,
       }
     })
@@ -439,28 +522,49 @@ function buildPetView(pet: {
   }
 }
 
+function withLaneIndexes<T extends { waveIndex: number; directionId?: string | null; laneIndex?: number | null }>(
+  monsters: T[]
+) {
+  const nextLaneByWave = new Map<string, number>()
+
+  return monsters.map((monster) => {
+    const laneKey = `${monster.directionId || ''}:${monster.waveIndex}`
+    const laneIndex = monster.laneIndex ?? nextLaneByWave.get(laneKey) ?? 0
+    nextLaneByWave.set(laneKey, laneIndex + 1)
+
+    return {
+      ...monster,
+      laneIndex,
+    }
+  })
+}
+
 async function createScheduledMonsters(
   tx: Tx,
   sessionId: string,
   config: ClassDefenseConfig,
   startedAt: Date
 ) {
-  const monsters = config.waves.flatMap((wave) =>
-    wave.monsters.map((monster) => ({
-      sessionId,
-      waveIndex: wave.waveIndex,
-      monsterKey: monster.monsterKey,
-      monsterName: monster.monsterName,
-      monsterLevel: monster.monsterLevel,
-      imagePath: monster.imagePath,
-      status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
-      hp: monster.hp,
-      maxHp: monster.hp,
-      attack: monster.attack,
-      speed: monster.speed,
-      routeProgress: 0,
-      spawnedAt: addSeconds(startedAt, wave.startDelaySeconds + monster.spawnDelaySeconds),
-    }))
+  const monsters = config.enabledDirections.flatMap((directionId) =>
+    config.waves.flatMap((wave) =>
+      wave.monsters.map((monster, laneIndex) => ({
+        sessionId,
+        directionId,
+        waveIndex: wave.waveIndex,
+        laneIndex,
+        monsterKey: monster.monsterKey,
+        monsterName: monster.monsterName,
+        monsterLevel: monster.monsterLevel,
+        imagePath: monster.imagePath,
+        status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
+        hp: monster.hp,
+        maxHp: monster.hp,
+        attack: monster.attack,
+        speed: monster.speed,
+        routeProgress: 0,
+        spawnedAt: addSeconds(startedAt, wave.startDelaySeconds + monster.spawnDelaySeconds),
+      }))
+    )
   )
 
   if (monsters.length === 0) {
@@ -555,7 +659,7 @@ export async function getTeacherClassDefenseSession(
         orderBy: { joinedAt: 'asc' },
       },
       monsters: {
-        orderBy: [{ waveIndex: 'asc' }, { spawnedAt: 'asc' }],
+        orderBy: [{ waveIndex: 'asc' }, { spawnedAt: 'asc' }, { id: 'asc' }],
       },
       combats: {
         orderBy: { startedAt: 'desc' },
@@ -778,20 +882,61 @@ export async function markClassDefenseHeartbeat(
 
 export async function getClassDefenseSnapshot(
   sessionId: string,
-  studentId?: string | null
+  studentId?: string | null,
+  directionId?: ClassDefenseDirectionId | null
 ) {
-  const [session, participants, monsters, activeCombat] = await Promise.all([
-    prisma.classDefenseSession.findUnique({
-      where: { id: sessionId },
-    }),
-    prisma.classDefenseParticipant.findMany({
-      where: { sessionId },
-      orderBy: { joinedAt: 'asc' },
-    }),
-    prisma.classDefenseMonster.findMany({
-      where: { sessionId },
-      orderBy: [{ waveIndex: 'asc' }, { spawnedAt: 'asc' }],
-    }),
+  const session = await prisma.classDefenseSession.findUnique({
+    where: { id: sessionId },
+  })
+
+  if (!session) {
+    throw new Error('守护班级会话不存在')
+  }
+
+  const config = parseClassDefenseConfig(session.configJson)
+  if (directionId !== undefined && directionId !== null) {
+    assertDirectionEnabled(directionId, config.enabledDirections)
+  }
+
+  const participantWhere = directionId === undefined
+    ? { sessionId }
+    : directionId
+      ? { sessionId, directionId }
+      : null
+  const monsterWhere = directionId === undefined
+    ? { sessionId }
+    : directionId
+      ? {
+          sessionId,
+          directionId,
+          status: {
+            in: [
+              CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+              CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+            ],
+          },
+        }
+      : null
+
+  const [participants, monsters, activeCombat, directions] = await Promise.all([
+    participantWhere
+      ? prisma.classDefenseParticipant.findMany({
+          where: participantWhere,
+          orderBy: { joinedAt: 'asc' },
+        })
+      : [],
+    monsterWhere
+      ? prisma.classDefenseMonster.findMany({
+          where: monsterWhere,
+          orderBy: [
+            { directionId: 'asc' },
+            { waveIndex: 'asc' },
+            { laneIndex: 'asc' },
+            { spawnedAt: 'asc' },
+            { id: 'asc' },
+          ],
+        })
+      : [],
     studentId
       ? prisma.classDefenseCombat.findFirst({
           where: {
@@ -802,11 +947,8 @@ export async function getClassDefenseSnapshot(
           orderBy: { startedAt: 'desc' },
         })
       : null,
+    getClassDefenseDirectionSummaries(sessionId, config.enabledDirections),
   ])
-
-  if (!session) {
-    throw new Error('守护班级会话不存在')
-  }
 
   const students = await prisma.user.findMany({
     where: {
@@ -848,11 +990,157 @@ export async function getClassDefenseSnapshot(
 
   return {
     serverTime: new Date().toISOString(),
-    session,
+    session: {
+      ...session,
+      enabledDirections: config.enabledDirections,
+    },
+    directions,
     participants: participantViews,
-    monsters,
+    monsters: withLaneIndexes(monsters),
     activeCombat,
   }
+}
+
+async function getClassDefenseDirectionSummaries(
+  sessionId: string,
+  enabledDirections: ClassDefenseDirectionId[]
+) {
+  const [monsters, participants] = await Promise.all([
+    prisma.classDefenseMonster.groupBy({
+      by: ['directionId'],
+      where: {
+        sessionId,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    prisma.classDefenseParticipant.groupBy({
+      by: ['directionId'],
+      where: {
+        sessionId,
+        directionId: {
+          not: null,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+  ])
+
+  const monsterCountByDirection = new Map(monsters.map((item) => [item.directionId, item._count._all]))
+  const defenderCountByDirection = new Map(
+    participants.map((item) => [item.directionId || '', item._count._all])
+  )
+
+  return CLASS_DEFENSE_DIRECTIONS.map((direction) => {
+    const enabled = enabledDirections.includes(direction.id)
+
+    return {
+      directionId: direction.id,
+      label: direction.label,
+      enabled,
+      monsterCount: enabled ? monsterCountByDirection.get(direction.id) || 0 : 0,
+      defenderCount: enabled ? defenderCountByDirection.get(direction.id) || 0 : 0,
+    }
+  })
+}
+
+export async function getClassDefenseDirectionSummary(sessionId: string) {
+  const session = await prisma.classDefenseSession.findUnique({
+    where: { id: sessionId },
+  })
+
+  if (!session) {
+    throw new Error('守护班级会话不存在')
+  }
+
+  const config = parseClassDefenseConfig(session.configJson)
+
+  return {
+    session: {
+      id: session.id,
+      status: session.status,
+      classHp: session.classHp,
+      maxClassHp: session.maxClassHp,
+      stateVersion: session.stateVersion,
+      enabledDirections: config.enabledDirections,
+    },
+    directions: await getClassDefenseDirectionSummaries(sessionId, config.enabledDirections),
+  }
+}
+
+export async function getClassDefenseDirectionDefenders(
+  sessionId: string,
+  directionId: ClassDefenseDirectionId
+) {
+  const snapshot = await getClassDefenseSnapshot(sessionId, null, directionId)
+
+  return {
+    directionId,
+    defenderCount: snapshot.directions.find((direction) => direction.directionId === directionId)?.defenderCount || 0,
+    defenders: snapshot.participants.slice(0, 10).map((participant) => ({
+      studentId: participant.studentId,
+      directionId,
+      student: participant.student ? { name: participant.student.name } : null,
+      pet: participant.pet
+        ? {
+            speciesKey: participant.pet.speciesKey,
+            nickname: participant.pet.nickname,
+          }
+        : null,
+    })),
+  }
+}
+
+export async function selectClassDefenseDirection(input: {
+  sessionId: string
+  studentId: string
+  directionId: string | null
+}) {
+  const session = await prisma.classDefenseSession.findFirst({
+    where: {
+      id: input.sessionId,
+      status: CLASS_DEFENSE_SESSION_STATUS.ACTIVE,
+    },
+  })
+
+  if (!session) {
+    throw new Error('守护班级未开始或已结束')
+  }
+
+  const config = parseClassDefenseConfig(session.configJson)
+  const directionId = input.directionId === null
+    ? null
+    : requireClassDefenseDirectionId(input.directionId)
+
+  if (directionId) {
+    assertDirectionEnabled(directionId, config.enabledDirections)
+  }
+
+  const updated = await prisma.classDefenseParticipant.updateMany({
+    where: {
+      sessionId: input.sessionId,
+      studentId: input.studentId,
+    },
+    data: {
+      directionId,
+      lastSeenAt: new Date(),
+    },
+  })
+
+  if (updated.count !== 1) {
+    throw new Error('请先进入守护班级')
+  }
+
+  return getClassDefenseSnapshot(input.sessionId, input.studentId, directionId)
 }
 
 export async function startClassDefenseCombat(input: {
@@ -883,13 +1171,11 @@ export async function startClassDefenseCombat(input: {
     },
     orderBy: { orderIndex: 'asc' },
   })
-  const question = pickQuestion(questions)
-
-  if (!question) {
+  if (questions.length === 0) {
     throw new Error('题库为空，无法进入战斗')
   }
 
-  const combat = await prisma.$transaction(async (tx) => {
+  const combatStarted = await prisma.$transaction(async (tx) => {
     const participant = await tx.classDefenseParticipant.findUnique({
       where: {
         sessionId_studentId: {
@@ -910,6 +1196,10 @@ export async function startClassDefenseCombat(input: {
       throw new Error('你正在等待复活')
     }
 
+    if (!participant.directionId) {
+      throw new Error('请先选择防守方向')
+    }
+
     await getStudentBattleStats(tx, input.studentId, config)
 
     const activeCombatCount = await tx.classDefenseCombat.count({
@@ -924,10 +1214,33 @@ export async function startClassDefenseCombat(input: {
       throw new Error('你已经在战斗中')
     }
 
+    const targetMonster = await tx.classDefenseMonster.findFirst({
+      where: {
+        id: input.monsterId,
+        sessionId: input.sessionId,
+        directionId: participant.directionId,
+        status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+        lockedByStudentId: null,
+      },
+      select: {
+        waveIndex: true,
+      },
+    })
+
+    if (!targetMonster) {
+      throw new Error('怪物已被其他同学锁定或不可攻击')
+    }
+
+    const question = pickQuestionForWave(questions, config, targetMonster.waveIndex)
+    if (!question) {
+      throw new Error('题库为空，无法进入战斗')
+    }
+
     const locked = await tx.classDefenseMonster.updateMany({
       where: {
         id: input.monsterId,
         sessionId: input.sessionId,
+        directionId: participant.directionId,
         status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
         lockedByStudentId: null,
       },
@@ -974,12 +1287,240 @@ export async function startClassDefenseCombat(input: {
       },
     })
 
-    return created
+    return {
+      combat: created,
+      question,
+    }
   })
 
   return {
-    combat,
-    question: publicQuestion(question),
+    combat: combatStarted.combat,
+    question: publicQuestion(combatStarted.question),
+  }
+}
+
+async function resolveClassDefenseCombatAnswer(
+  tx: Tx,
+  input: {
+    combat: ClassDefenseCombatWithSessionMonster
+    answer: string
+    now: Date
+    forceIncorrect?: boolean
+  }
+): Promise<ClassDefenseCombatResult> {
+  const combat = input.combat
+  const now = input.now
+  const question = await tx.paperQuestion.findUnique({
+    where: { id: combat.paperQuestionId },
+  })
+
+  if (!question) {
+    throw new Error('题目不存在')
+  }
+
+  const config = parseClassDefenseConfig(combat.session.configJson)
+  if (!combat.session.paperId) {
+    throw new Error('本局游戏没有绑定题库试卷')
+  }
+
+  const questions = await tx.paperQuestion.findMany({
+    where: {
+      paperId: combat.session.paperId,
+    },
+    orderBy: { orderIndex: 'asc' },
+  })
+  if (questions.length === 0) {
+    throw new Error('题库为空，无法继续战斗')
+  }
+
+  const isCorrect = input.forceIncorrect
+    ? false
+    : evaluateQuestionAnswer(question, input.answer)
+
+  const participant = await tx.classDefenseParticipant.findUnique({
+    where: {
+      sessionId_studentId: {
+        sessionId: combat.sessionId,
+        studentId: combat.studentId,
+      },
+    },
+  })
+
+  if (!participant) {
+    throw new Error('参战学生不存在')
+  }
+
+  const battleStats = await getStudentBattleStats(tx, combat.studentId, config)
+  const isCritical = isCorrect && rollPercent(battleStats.critRate)
+  const isDodged = !isCorrect && rollPercent(battleStats.dodgeRate)
+  const damageToMonster = isCorrect
+    ? Math.max(1, Math.round(battleStats.attack * (isCritical ? 2 : 1)))
+    : 0
+  const damageToStudent = isCorrect || isDodged
+    ? 0
+    : calculateDamageAfterDefense(combat.monster.attack, battleStats.defense)
+  const nextMonsterHp = Math.max(0, combat.monster.hp - damageToMonster)
+  const monsterKilled = nextMonsterHp <= 0
+  const nextStudentHp = Math.max(0, participant.hp - damageToStudent)
+  const studentDown = nextStudentHp <= 0
+  const reviveAt = studentDown ? addSeconds(now, config.reviveSeconds) : null
+  const roundIndex = await tx.classDefenseAnswer.count({
+    where: {
+      combatId: combat.id,
+    },
+  }) + 1
+  const battleEnded = monsterKilled || studentDown
+  const nextQuestion = battleEnded
+    ? null
+    : pickQuestionForWave(questions, config, combat.monster.waveIndex)
+
+  if (!battleEnded && !nextQuestion) {
+    throw new Error('题库为空，无法继续战斗')
+  }
+
+  await tx.classDefenseAnswer.create({
+    data: {
+      combatId: combat.id,
+      sessionId: combat.sessionId,
+      studentId: combat.studentId,
+      monsterId: combat.monsterId,
+      roundIndex,
+      paperQuestionId: combat.paperQuestionId,
+      answer: input.answer,
+      isCorrect,
+      submittedAt: now,
+    },
+  })
+
+  await tx.classDefenseCombat.update({
+    where: { id: combat.id },
+    data: {
+      status: battleEnded
+        ? CLASS_DEFENSE_COMBAT_STATUS.RESOLVED
+        : CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
+      paperQuestionId: nextQuestion?.id || combat.paperQuestionId,
+      expiresAt: battleEnded ? combat.expiresAt : addSeconds(now, config.combatSeconds),
+      endedAt: battleEnded ? now : null,
+      isCorrect,
+      damageToMonster,
+      damageToStudent,
+    },
+  })
+
+  await tx.classDefenseMonster.update({
+    where: { id: combat.monsterId },
+    data: {
+      hp: nextMonsterHp,
+      status: monsterKilled
+        ? CLASS_DEFENSE_MONSTER_STATUS.KILLED
+        : studentDown
+          ? CLASS_DEFENSE_MONSTER_STATUS.WALKING
+          : CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+      lockedByStudentId: battleEnded ? null : combat.studentId,
+      lockExpiresAt: battleEnded ? null : addSeconds(now, config.combatSeconds),
+      killedAt: monsterKilled ? now : null,
+    },
+  })
+
+  await tx.classDefenseParticipant.update({
+    where: {
+      sessionId_studentId: {
+        sessionId: combat.sessionId,
+        studentId: combat.studentId,
+      },
+    },
+    data: {
+      hp: nextStudentHp,
+      maxHp: battleStats.maxHp,
+      status: studentDown
+        ? CLASS_DEFENSE_PARTICIPANT_STATUS.DOWN
+        : CLASS_DEFENSE_PARTICIPANT_STATUS.ALIVE,
+      reviveAt,
+    },
+  })
+
+  if (monsterKilled && config.killPointReward > 0) {
+    await createStudentPointRecordWithTx(tx, {
+      studentId: combat.studentId,
+      delta: config.killPointReward,
+      reason: `守护班级击杀怪物奖励`,
+      occurredAt: now,
+      source: POINT_SOURCE.CLASS_DEFENSE,
+    })
+  }
+
+  await appendEvent(tx, {
+    sessionId: combat.sessionId,
+    type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_RESULT,
+    payload: {
+      combatId: combat.id,
+      roundIndex,
+      monsterId: combat.monsterId,
+      studentId: combat.studentId,
+      isCorrect,
+      damageToMonster,
+      damageToStudent,
+      isCritical,
+      isDodged,
+      battleStats,
+      monsterHp: nextMonsterHp,
+      studentHp: nextStudentHp,
+      battleEnded,
+      nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
+      reviveAt: reviveAt?.toISOString() || null,
+    },
+  })
+
+  if (monsterKilled) {
+    await appendEvent(tx, {
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_KILLED,
+      payload: {
+        monsterId: combat.monsterId,
+        studentId: combat.studentId,
+      },
+    })
+  } else if (studentDown) {
+    await appendEvent(tx, {
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_RELEASED,
+      payload: {
+        monsterId: combat.monsterId,
+        reason: 'STUDENT_DOWN',
+      },
+    })
+  }
+
+  if (studentDown) {
+    await appendEvent(tx, {
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.STUDENT_DOWN,
+      payload: {
+        studentId: combat.studentId,
+        reviveAt: reviveAt?.toISOString() || null,
+      },
+    })
+  }
+
+  return {
+    combatId: combat.id,
+    sessionId: combat.sessionId,
+    monsterId: combat.monsterId,
+    studentId: combat.studentId,
+    roundIndex,
+    isCorrect,
+    damageToMonster,
+    damageToStudent,
+    isCritical,
+    isDodged,
+    battleStats,
+    monsterHp: nextMonsterHp,
+    monsterKilled,
+    studentHp: nextStudentHp,
+    studentDown,
+    battleEnded,
+    nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
+    reviveAt,
   }
 }
 
@@ -1007,240 +1548,12 @@ export async function submitClassDefenseAnswer(input: {
       throw new Error('战斗不存在或已结束')
     }
 
-    if (combat.expiresAt && combat.expiresAt < now) {
-      await tx.classDefenseCombat.update({
-        where: { id: combat.id },
-        data: {
-          status: CLASS_DEFENSE_COMBAT_STATUS.EXPIRED,
-          endedAt: now,
-        },
-      })
-      await tx.classDefenseMonster.update({
-        where: { id: combat.monsterId },
-        data: {
-          status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
-          lockedByStudentId: null,
-          lockExpiresAt: null,
-        },
-      })
-      await appendEvent(tx, {
-        sessionId: combat.sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_RELEASED,
-        payload: {
-          monsterId: combat.monsterId,
-          reason: 'COMBAT_EXPIRED',
-        },
-      })
-      throw new Error('答题超时')
-    }
-
-    const question = await tx.paperQuestion.findUnique({
-      where: { id: combat.paperQuestionId },
+    return resolveClassDefenseCombatAnswer(tx, {
+      combat,
+      answer: input.answer,
+      now,
+      forceIncorrect: input.answer === '__TIMEOUT__' || Boolean(combat.expiresAt && combat.expiresAt <= now),
     })
-
-    if (!question) {
-      throw new Error('题目不存在')
-    }
-
-    const config = parseClassDefenseConfig(combat.session.configJson)
-    if (!combat.session.paperId) {
-      throw new Error('本局游戏没有绑定题库试卷')
-    }
-
-    const questions = await tx.paperQuestion.findMany({
-      where: {
-        paperId: combat.session.paperId,
-      },
-      orderBy: { orderIndex: 'asc' },
-    })
-    if (questions.length === 0) {
-      throw new Error('题库为空，无法继续战斗')
-    }
-
-    const isCorrect = evaluateQuestionAnswer(question, input.answer)
-
-    const participant = await tx.classDefenseParticipant.findUnique({
-      where: {
-        sessionId_studentId: {
-          sessionId: combat.sessionId,
-          studentId: input.studentId,
-        },
-      },
-    })
-
-    if (!participant) {
-      throw new Error('参战学生不存在')
-    }
-
-    const battleStats = await getStudentBattleStats(tx, input.studentId, config)
-    const isCritical = isCorrect && rollPercent(battleStats.critRate)
-    const isDodged = !isCorrect && rollPercent(battleStats.dodgeRate)
-    const damageToMonster = isCorrect
-      ? Math.max(1, Math.round(battleStats.attack * (isCritical ? 2 : 1)))
-      : 0
-    const damageToStudent = isCorrect || isDodged
-      ? 0
-      : calculateDamageAfterDefense(combat.monster.attack, battleStats.defense)
-    const nextMonsterHp = Math.max(0, combat.monster.hp - damageToMonster)
-    const monsterKilled = nextMonsterHp <= 0
-    const nextStudentHp = Math.max(0, participant.hp - damageToStudent)
-    const studentDown = nextStudentHp <= 0
-    const reviveAt = studentDown ? addSeconds(now, config.reviveSeconds) : null
-    const roundIndex = await tx.classDefenseAnswer.count({
-      where: {
-        combatId: combat.id,
-      },
-    }) + 1
-    const battleEnded = monsterKilled || studentDown
-    const nextQuestion = battleEnded ? null : pickQuestion(questions)
-
-    if (!battleEnded && !nextQuestion) {
-      throw new Error('题库为空，无法继续战斗')
-    }
-
-    await tx.classDefenseAnswer.create({
-      data: {
-        combatId: combat.id,
-        sessionId: combat.sessionId,
-        studentId: input.studentId,
-        monsterId: combat.monsterId,
-        roundIndex,
-        paperQuestionId: combat.paperQuestionId,
-        answer: input.answer,
-        isCorrect,
-        submittedAt: now,
-      },
-    })
-
-    await tx.classDefenseCombat.update({
-      where: { id: combat.id },
-      data: {
-        status: battleEnded
-          ? CLASS_DEFENSE_COMBAT_STATUS.RESOLVED
-          : CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
-        paperQuestionId: nextQuestion?.id || combat.paperQuestionId,
-        expiresAt: battleEnded ? combat.expiresAt : addSeconds(now, config.combatSeconds),
-        endedAt: battleEnded ? now : null,
-        isCorrect,
-        damageToMonster,
-        damageToStudent,
-      },
-    })
-
-    await tx.classDefenseMonster.update({
-      where: { id: combat.monsterId },
-      data: {
-        hp: nextMonsterHp,
-        status: monsterKilled
-          ? CLASS_DEFENSE_MONSTER_STATUS.KILLED
-          : studentDown
-            ? CLASS_DEFENSE_MONSTER_STATUS.WALKING
-            : CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
-        lockedByStudentId: battleEnded ? null : input.studentId,
-        lockExpiresAt: battleEnded ? null : addSeconds(now, config.combatSeconds),
-        killedAt: monsterKilled ? now : null,
-      },
-    })
-
-    await tx.classDefenseParticipant.update({
-      where: {
-        sessionId_studentId: {
-          sessionId: combat.sessionId,
-          studentId: input.studentId,
-        },
-      },
-      data: {
-        hp: nextStudentHp,
-        maxHp: battleStats.maxHp,
-        status: studentDown
-          ? CLASS_DEFENSE_PARTICIPANT_STATUS.DOWN
-          : CLASS_DEFENSE_PARTICIPANT_STATUS.ALIVE,
-        reviveAt,
-      },
-    })
-
-    if (monsterKilled && config.killPointReward > 0) {
-      await createStudentPointRecordWithTx(tx, {
-        studentId: input.studentId,
-        delta: config.killPointReward,
-        reason: `守护班级击杀怪物奖励`,
-        occurredAt: now,
-        source: POINT_SOURCE.CLASS_DEFENSE,
-      })
-    }
-
-    await appendEvent(tx, {
-      sessionId: combat.sessionId,
-      type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_RESULT,
-      payload: {
-        combatId: combat.id,
-        roundIndex,
-        monsterId: combat.monsterId,
-        studentId: input.studentId,
-        isCorrect,
-        damageToMonster,
-        damageToStudent,
-        isCritical,
-        isDodged,
-        battleStats,
-        monsterHp: nextMonsterHp,
-        studentHp: nextStudentHp,
-        battleEnded,
-        nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
-        reviveAt: reviveAt?.toISOString() || null,
-      },
-    })
-
-    if (monsterKilled) {
-      await appendEvent(tx, {
-        sessionId: combat.sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_KILLED,
-        payload: {
-          monsterId: combat.monsterId,
-          studentId: input.studentId,
-        },
-      })
-    } else if (studentDown) {
-      await appendEvent(tx, {
-        sessionId: combat.sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_RELEASED,
-        payload: {
-          monsterId: combat.monsterId,
-          reason: 'STUDENT_DOWN',
-        },
-      })
-    }
-
-    if (studentDown) {
-      await appendEvent(tx, {
-        sessionId: combat.sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.STUDENT_DOWN,
-        payload: {
-          studentId: input.studentId,
-          reviveAt: reviveAt?.toISOString() || null,
-        },
-      })
-    }
-
-    return {
-      combatId: combat.id,
-      sessionId: combat.sessionId,
-      monsterId: combat.monsterId,
-      roundIndex,
-      isCorrect,
-      damageToMonster,
-      damageToStudent,
-      isCritical,
-      isDodged,
-      battleStats,
-      monsterHp: nextMonsterHp,
-      monsterKilled,
-      studentHp: nextStudentHp,
-      studentDown,
-      battleEnded,
-      nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
-      reviveAt,
-    }
   })
 }
 
@@ -1350,69 +1663,170 @@ export async function fleeClassDefenseCombat(input: {
   })
 }
 
+async function activateNextClassDefenseWaveIfReady(
+  tx: Tx,
+  sessionId: string,
+  now: Date,
+  config: ClassDefenseConfig
+) {
+  const activeMonsterCount = await tx.classDefenseMonster.count({
+    where: {
+      sessionId,
+      status: {
+        in: [
+          CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+          CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+        ],
+      },
+    },
+  })
+
+  if (activeMonsterCount > 0) {
+    return false
+  }
+
+  const nextWaitingMonster = await tx.classDefenseMonster.findFirst({
+    where: {
+      sessionId,
+      status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
+    },
+    orderBy: [{ waveIndex: 'asc' }, { spawnedAt: 'asc' }],
+  })
+
+  if (!nextWaitingMonster) {
+    return false
+  }
+
+  const nextWaveMonsters = await tx.classDefenseMonster.findMany({
+    where: {
+      sessionId,
+      waveIndex: nextWaitingMonster.waveIndex,
+      status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
+    },
+    orderBy: [{ spawnedAt: 'asc' }, { id: 'asc' }],
+  })
+  const firstSpawnAt = nextWaveMonsters[0]?.spawnedAt || nextWaitingMonster.spawnedAt
+  let readyAt = firstSpawnAt
+
+  const previousWave = await tx.classDefenseMonster.findFirst({
+    where: {
+      sessionId,
+      waveIndex: {
+        lt: nextWaitingMonster.waveIndex,
+      },
+    },
+    orderBy: { waveIndex: 'desc' },
+    select: {
+      waveIndex: true,
+    },
+  })
+
+  if (previousWave) {
+    const previousWaveMonsters = await tx.classDefenseMonster.findMany({
+      where: {
+        sessionId,
+        waveIndex: previousWave.waveIndex,
+      },
+      select: {
+        status: true,
+        killedAt: true,
+        reachedAt: true,
+        updatedAt: true,
+      },
+    })
+    const previousWaveResolved = previousWaveMonsters.length > 0 && previousWaveMonsters.every((monster) =>
+      monster.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED ||
+      monster.status === CLASS_DEFENSE_MONSTER_STATUS.REACHED
+    )
+
+    if (!previousWaveResolved) {
+      return false
+    }
+
+    const previousWaveFinishedAt = new Date(Math.max(
+      ...previousWaveMonsters.map((monster) =>
+        (monster.killedAt || monster.reachedAt || monster.updatedAt).getTime()
+      )
+    ))
+    readyAt = new Date(Math.max(
+      readyAt.getTime(),
+      addSeconds(previousWaveFinishedAt, config.nextWaveDelaySeconds).getTime()
+    ))
+  }
+
+  if (readyAt > now) {
+    return false
+  }
+
+  await tx.classDefenseMonster.updateMany({
+    where: {
+      sessionId,
+      waveIndex: nextWaitingMonster.waveIndex,
+      status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
+    },
+    data: {
+      status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+      updatedAt: now,
+    },
+  })
+
+  for (const monster of nextWaveMonsters) {
+    await appendEvent(tx, {
+      sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_SPAWNED,
+      payload: {
+        monsterId: monster.id,
+        directionId: monster.directionId,
+        monsterKey: monster.monsterKey,
+        monsterName: monster.monsterName,
+        monsterLevel: monster.monsterLevel,
+        imagePath: monster.imagePath,
+        waveIndex: monster.waveIndex,
+        laneIndex: monster.laneIndex,
+      },
+    })
+  }
+
+  return true
+}
+
 export async function tickClassDefenseSession(sessionId: string) {
   const now = new Date()
 
-  const changed = await prisma.$transaction(async (tx) => {
+  const tickResult = await prisma.$transaction(async (tx) => {
     const session = await tx.classDefenseSession.findUnique({
       where: { id: sessionId },
     })
 
     if (!session || session.status !== CLASS_DEFENSE_SESSION_STATUS.ACTIVE) {
-      return false
+      return null
     }
 
     const config = parseClassDefenseConfig(session.configJson)
+    const combatResults: ClassDefenseCombatResult[] = []
+    const combatCancellations: ClassDefenseCombatCancellation[] = []
 
     const expiredCombats = await tx.classDefenseCombat.findMany({
       where: {
         sessionId,
         status: CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
         expiresAt: {
-          lt: now,
+          lte: now,
         },
       },
-      select: {
-        id: true,
-        monsterId: true,
+      include: {
+        session: true,
+        monster: true,
       },
     })
 
-    if (expiredCombats.length > 0) {
-      await tx.classDefenseCombat.updateMany({
-        where: {
-          id: {
-            in: expiredCombats.map((combat) => combat.id),
-          },
-        },
-        data: {
-          status: CLASS_DEFENSE_COMBAT_STATUS.EXPIRED,
-          endedAt: now,
-        },
-      })
-      await tx.classDefenseMonster.updateMany({
-        where: {
-          id: {
-            in: expiredCombats.map((combat) => combat.monsterId),
-          },
-          status: CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
-        },
-        data: {
-          status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
-          lockedByStudentId: null,
-          lockExpiresAt: null,
-        },
-      })
-      for (const combat of expiredCombats) {
-        await appendEvent(tx, {
-          sessionId,
-          type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_RELEASED,
-          payload: {
-            monsterId: combat.monsterId,
-            reason: 'COMBAT_EXPIRED',
-          },
-        })
-      }
+    for (const combat of expiredCombats) {
+      combatResults.push(await resolveClassDefenseCombatAnswer(tx, {
+        combat,
+        answer: '__TIMEOUT__',
+        now,
+        forceIncorrect: true,
+      }))
     }
 
     const revivableParticipants = await tx.classDefenseParticipant.findMany({
@@ -1444,47 +1858,22 @@ export async function tickClassDefenseSession(sessionId: string) {
       })
     }
 
-    const waitingMonsters = await tx.classDefenseMonster.findMany({
+    await activateNextClassDefenseWaveIfReady(tx, sessionId, now, config)
+
+    const activeMonsters = await tx.classDefenseMonster.findMany({
       where: {
         sessionId,
-        status: CLASS_DEFENSE_MONSTER_STATUS.WAITING,
-        spawnedAt: {
-          lte: now,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
         },
-      },
-    })
-
-    for (const monster of waitingMonsters) {
-      await tx.classDefenseMonster.update({
-        where: { id: monster.id },
-        data: {
-          status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
-          updatedAt: now,
-        },
-      })
-      await appendEvent(tx, {
-        sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_SPAWNED,
-        payload: {
-          monsterId: monster.id,
-          monsterKey: monster.monsterKey,
-          monsterName: monster.monsterName,
-          monsterLevel: monster.monsterLevel,
-          imagePath: monster.imagePath,
-          waveIndex: monster.waveIndex,
-        },
-      })
-    }
-
-    const walkingMonsters = await tx.classDefenseMonster.findMany({
-      where: {
-        sessionId,
-        status: CLASS_DEFENSE_MONSTER_STATUS.WALKING,
       },
     })
 
     let nextClassHp = session.classHp
-    for (const monster of walkingMonsters) {
+    for (const monster of activeMonsters) {
       const elapsedSeconds = Math.max(
         0,
         (now.getTime() - monster.updatedAt.getTime()) / 1000
@@ -1493,14 +1882,52 @@ export async function tickClassDefenseSession(sessionId: string) {
 
       if (nextProgress >= 1) {
         nextClassHp = Math.max(0, nextClassHp - 1)
+        const activeCombatsForMonster = await tx.classDefenseCombat.findMany({
+          where: {
+            sessionId,
+            monsterId: monster.id,
+            status: CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
+          },
+          select: {
+            id: true,
+            sessionId: true,
+            monsterId: true,
+            studentId: true,
+          },
+        })
+
         await tx.classDefenseMonster.update({
           where: { id: monster.id },
           data: {
             status: CLASS_DEFENSE_MONSTER_STATUS.REACHED,
             routeProgress: 1,
+            lockedByStudentId: null,
+            lockExpiresAt: null,
             reachedAt: now,
           },
         })
+        if (activeCombatsForMonster.length > 0) {
+          await tx.classDefenseCombat.updateMany({
+            where: {
+              id: {
+                in: activeCombatsForMonster.map((combat) => combat.id),
+              },
+            },
+            data: {
+              status: CLASS_DEFENSE_COMBAT_STATUS.CANCELLED,
+              endedAt: now,
+            },
+          })
+          combatCancellations.push(
+            ...activeCombatsForMonster.map((combat) => ({
+              combatId: combat.id,
+              sessionId: combat.sessionId,
+              monsterId: combat.monsterId,
+              studentId: combat.studentId,
+              reason: 'MONSTER_REACHED',
+            }))
+          )
+        }
         await appendEvent(tx, {
           sessionId,
           type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_REACHED,
@@ -1581,12 +2008,19 @@ export async function tickClassDefenseSession(sessionId: string) {
       })
     }
 
-    return true
+    return {
+      combatResults,
+      combatCancellations,
+    }
   })
 
-  if (!changed) {
+  if (!tickResult) {
     return null
   }
 
-  return getClassDefenseSnapshot(sessionId)
+  return {
+    summary: await getClassDefenseDirectionSummary(sessionId),
+    combatResults: tickResult.combatResults,
+    combatCancellations: tickResult.combatCancellations,
+  }
 }

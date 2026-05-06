@@ -364,6 +364,7 @@ model ClassDefenseParticipant {
   sessionId   String
   session     ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   studentId   String
+  directionId String?
   status      String              @default("ALIVE")
   hp          Int
   maxHp       Int
@@ -374,6 +375,7 @@ model ClassDefenseParticipant {
   updatedAt   DateTime            @updatedAt
 
   @@unique([sessionId, studentId])
+  @@index([sessionId, directionId])
   @@index([sessionId, status])
   @@index([studentId, joinedAt])
 }
@@ -382,7 +384,9 @@ model ClassDefenseMonster {
   id                String              @id @default(cuid())
   sessionId         String
   session           ClassDefenseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  directionId       String              @default("east")
   waveIndex         Int
+  laneIndex         Int                 @default(0)
   monsterKey        String
   monsterName       String?
   monsterLevel      Int                 @default(1)
@@ -404,6 +408,7 @@ model ClassDefenseMonster {
   answers ClassDefenseAnswer[]
 
   @@index([sessionId, status])
+  @@index([sessionId, directionId, status])
   @@index([sessionId, lockedByStudentId])
 }
 

@@ -161,6 +161,8 @@ Content-Type: application/json
 
 客户端消息推荐带 `requestId`，服务端响应会原样带回，便于 Godot 匹配请求。
 
+八方向守城、方向订阅、轻量快照和增量事件见 `docs/class-defense-direction-rooms-api.md`。学生端不应再接收所有方向的完整怪物列表。
+
 ### 1. 连接成功
 
 服务端主动发送：

@@ -60,6 +60,17 @@ interface WaveDraft {
   rows: WaveMonsterDraft[]
 }
 
+const CLASS_DEFENSE_DIRECTIONS = [
+  { id: 'northwest', label: '西北' },
+  { id: 'north', label: '北' },
+  { id: 'northeast', label: '东北' },
+  { id: 'west', label: '西' },
+  { id: 'east', label: '东' },
+  { id: 'southwest', label: '西南' },
+  { id: 'south', label: '南' },
+  { id: 'southeast', label: '东南' },
+] as const
+
 function createDraftId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -69,7 +80,7 @@ function createMonsterRow(monsterTypeId: string): WaveMonsterDraft {
     id: createDraftId(),
     monsterTypeId,
     level: '1',
-    quantity: '3',
+    quantity: '18',
   }
 }
 
@@ -88,7 +99,7 @@ function createInitialWaves(monsterTypes: MonsterType[]): WaveDraft[] {
         {
           ...createMonsterRow(secondMonsterId),
           level: '2',
-          quantity: '2',
+          quantity: '18',
         },
       ],
     },
@@ -125,8 +136,11 @@ export default function ClassDefenseManager({
   const [paperId, setPaperId] = useState(papers[0]?.id || '')
   const [maxClassHp, setMaxClassHp] = useState('10')
   const [reviveSeconds, setReviveSeconds] = useState('30')
-  const [combatSeconds, setCombatSeconds] = useState('45')
+  const [combatSeconds, setCombatSeconds] = useState('30')
   const [killPointReward, setKillPointReward] = useState('1')
+  const [enabledDirections, setEnabledDirections] = useState<string[]>(
+    () => CLASS_DEFENSE_DIRECTIONS.map((direction) => direction.id)
+  )
   const [waves, setWaves] = useState<WaveDraft[]>(() => createInitialWaves(monsterTypes))
 
   const paperTitleById = useMemo(
@@ -197,6 +211,14 @@ export default function ClassDefenseManager({
     )
   }
 
+  const toggleDirection = (directionId: string) => {
+    setEnabledDirections((current) =>
+      current.includes(directionId)
+        ? current.filter((item) => item !== directionId)
+        : [...current, directionId]
+    )
+  }
+
   const handleCreate = async () => {
     if (!className) {
       alert('请选择班级')
@@ -210,6 +232,11 @@ export default function ClassDefenseManager({
 
     if (!monsterTypes.length) {
       alert('请先创建怪物')
+      return
+    }
+
+    if (enabledDirections.length === 0) {
+      alert('请至少开启一个出怪方向')
       return
     }
 
@@ -247,6 +274,7 @@ export default function ClassDefenseManager({
             killPointReward: Number(killPointReward),
             tickMs: 1000,
             spawnIntervalSeconds: 4,
+            enabledDirections,
             waves: configuredWaves,
           },
         }),
@@ -370,6 +398,45 @@ export default function ClassDefenseManager({
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </label>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-slate-700">出怪方向</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setEnabledDirections(CLASS_DEFENSE_DIRECTIONS.map((direction) => direction.id))
+                }
+                className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-200"
+              >
+                全开
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {CLASS_DEFENSE_DIRECTIONS.map((direction) => {
+                const checked = enabledDirections.includes(direction.id)
+
+                return (
+                  <label
+                    key={direction.id}
+                    className={`flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2 text-sm ${
+                      checked
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleDirection(direction.id)}
+                      className="sr-only"
+                    />
+                    {direction.label}
+                  </label>
+                )
+              })}
+            </div>
           </div>
 
           <div className="space-y-3">

@@ -45,3 +45,18 @@ export const CLASS_DEFENSE_TOKEN_USE = {
   ACCESS: 'CLASS_DEFENSE_ACCESS',
   WS_TICKET: 'CLASS_DEFENSE_WS_TICKET',
 } as const
+
+export const CLASS_DEFENSE_DIRECTIONS = [
+  { id: 'northwest', label: '西北' },
+  { id: 'north', label: '北' },
+  { id: 'northeast', label: '东北' },
+  { id: 'west', label: '西' },
+  { id: 'east', label: '东' },
+  { id: 'southwest', label: '西南' },
+  { id: 'south', label: '南' },
+  { id: 'southeast', label: '东南' },
+] as const
+
+export type ClassDefenseDirectionId = typeof CLASS_DEFENSE_DIRECTIONS[number]['id']
+
+export const CLASS_DEFENSE_DIRECTION_IDS = CLASS_DEFENSE_DIRECTIONS.map((direction) => direction.id)
