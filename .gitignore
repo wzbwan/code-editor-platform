@@ -14,3 +14,4 @@ local-runner/.env
 backups
 .backup
 *.bak
+tsconfig.tsbuildinfo
