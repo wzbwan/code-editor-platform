@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { requireStudent } from '@/lib/auth'
+import { requireGodotStudent } from '@/lib/auth'
 import { getStudentChallengeHome } from '@/lib/challenges/service'
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 
 export default async function StudentChallengesPage({ searchParams }: Props) {
   const embedded = (await searchParams)?.embedded
-  const student = await requireStudent()
+  const student = await requireGodotStudent()
   const data = await getStudentChallengeHome(student.id)
   const embeddedQuery = embedded === 'godot' ? '?embedded=godot' : ''
 

@@ -6,6 +6,7 @@ import {
   getChallengeSubmitRetryAfterSeconds,
   recordChallengeSubmitCooldown,
 } from '@/lib/challenges/cooldown'
+import { SESSION_CLIENT_TYPES } from '@/lib/session-client'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,10 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session || session.user.role !== 'STUDENT') {
     return NextResponse.json({ error: '未授权' }, { status: 401 })
+  }
+
+  if (session.user.clientType !== SESSION_CLIENT_TYPES.GODOT) {
+    return NextResponse.json({ error: '请在 Godot 客户端中完成代码闯关' }, { status: 403 })
   }
 
   const body = await request.json()

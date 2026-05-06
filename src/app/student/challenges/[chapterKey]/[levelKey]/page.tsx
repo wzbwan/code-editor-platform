@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requireStudent } from '@/lib/auth'
+import { requireGodotStudent } from '@/lib/auth'
 import { getStudentChallengeLevelView } from '@/lib/challenges/service'
 import ChallengeLevelClient from './ChallengeLevelClient'
 
@@ -11,7 +11,7 @@ interface Props {
 
 export default async function StudentChallengeLevelPage({ params, searchParams }: Props) {
   const embedded = (await searchParams)?.embedded
-  const student = await requireStudent()
+  const student = await requireGodotStudent()
   const { chapterKey, levelKey } = await params
   const data = await getStudentChallengeLevelView(student.id, chapterKey, levelKey)
 

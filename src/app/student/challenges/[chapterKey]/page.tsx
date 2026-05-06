@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requireStudent } from '@/lib/auth'
+import { requireGodotStudent } from '@/lib/auth'
 import { getStudentChallengeChapterView } from '@/lib/challenges/service'
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 
 export default async function StudentChallengeChapterPage({ params, searchParams }: Props) {
   const embedded = (await searchParams)?.embedded
-  const student = await requireStudent()
+  const student = await requireGodotStudent()
   const { chapterKey } = await params
   const data = await getStudentChallengeChapterView(student.id, chapterKey)
   const embeddedQuery = embedded === 'godot' ? '?embedded=godot' : ''

@@ -14,7 +14,7 @@ export default function Navbar() {
   )
 
   useEffect(() => {
-    if (session?.user?.role !== 'STUDENT') {
+    if (session?.user?.role !== 'STUDENT' || session.user.clientType !== 'GODOT') {
       setStudentChallengesNavVisible(null)
       return
     }
@@ -45,7 +45,7 @@ export default function Navbar() {
     return () => {
       cancelled = true
     }
-  }, [session?.user?.role])
+  }, [session?.user?.clientType, session?.user?.role])
 
   if (searchParams.get('embedded') === 'godot') {
     return null
@@ -82,7 +82,7 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link href="/student" className="hover:text-gray-300">我的作业</Link>
-                  {studentChallengesNavVisible && (
+                  {session.user.clientType === 'GODOT' && studentChallengesNavVisible && (
                     <Link href="/student/challenges" className="hover:text-gray-300">代码闯关</Link>
                   )}
                   <Link href="/student/practice" className="hover:text-gray-300">答题练习</Link>

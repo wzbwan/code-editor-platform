@@ -1,4 +1,5 @@
 import { listMilkTeaChapter } from '@/lib/challenges/chapters/list-milk-tea'
+import { robotRepairStationChapter } from '@/lib/challenges/chapters/robot-repair-station'
 import { sequenceSetCampChapter } from '@/lib/challenges/chapters/sequence-set-camp'
 import { spaceMarketAdventureChapter } from '@/lib/challenges/chapters/space-market-adventure'
 import { ChallengeChapterDefinition, ChallengeLevelDefinition } from '@/lib/challenges/types'
@@ -7,6 +8,7 @@ const chapters = [
   listMilkTeaChapter,
   sequenceSetCampChapter,
   spaceMarketAdventureChapter,
+  robotRepairStationChapter,
 ] satisfies ChallengeChapterDefinition[]
 
 export function getAllChallengeChapters() {
