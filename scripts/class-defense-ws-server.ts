@@ -15,6 +15,7 @@ import {
   tickClassDefenseSession,
 } from '@/lib/class-defense/service'
 import {
+  CLASS_DEFENSE_DIRECTIONS,
   CLASS_DEFENSE_DIRECTION_IDS,
   CLASS_DEFENSE_MONSTER_STATUS,
   type ClassDefenseDirectionId,
@@ -64,8 +65,31 @@ interface MonsterBroadcastView {
   lockedByStudentId: string | null
 }
 
+interface PublicMessagePayload {
+  id: string
+  kind: 'direction_under_attack' | 'student_down'
+  sessionId: string
+  directionId?: ClassDefenseDirectionId
+  studentId?: string
+  studentName?: string
+  message: string
+  createdAt: string
+}
+
+const directionLabelById = new Map(
+  CLASS_DEFENSE_DIRECTIONS.map((direction) => [direction.id, direction.label])
+)
+let publicMessageSequence = 0
+
 function clientId() {
   return Math.random().toString(36).slice(2)
+}
+
+function nextPublicMessageId(now: Date) {
+  publicMessageSequence = (publicMessageSequence + 1) % 1000000
+  const timestamp = now.toISOString().replace(/\D/g, '').slice(0, 14)
+  const sequence = String(publicMessageSequence).padStart(6, '0')
+  return `pm-${timestamp}-${sequence}`
 }
 
 function send(ws: WebSocket, payload: unknown) {
@@ -91,6 +115,55 @@ function broadcast(sessionId: string, payload: unknown) {
   for (const ws of Array.from(sockets)) {
     send(ws, payload)
   }
+}
+
+function broadcastPublicMessage(sessionId: string, data: PublicMessagePayload) {
+  broadcast(sessionId, {
+    type: 'public_message',
+    data,
+  })
+}
+
+function broadcastDirectionUnderAttackMessage(
+  sessionId: string,
+  directionId: ClassDefenseDirectionId
+) {
+  const now = new Date()
+  const directionLabel = directionLabelById.get(directionId) || directionId
+  broadcastPublicMessage(sessionId, {
+    id: nextPublicMessageId(now),
+    kind: 'direction_under_attack',
+    sessionId,
+    directionId,
+    message: `${directionLabel}防线正在遭受攻击，请求支援`,
+    createdAt: now.toISOString(),
+  })
+}
+
+async function broadcastStudentDownMessage(
+  sessionId: string,
+  studentId: string,
+  directionId?: ClassDefenseDirectionId | null
+) {
+  const student = await prisma.user.findUnique({
+    where: { id: studentId },
+    select: {
+      name: true,
+      username: true,
+    },
+  })
+  const studentName = student?.name || student?.username || '同学'
+  const now = new Date()
+  broadcastPublicMessage(sessionId, {
+    id: nextPublicMessageId(now),
+    kind: 'student_down',
+    sessionId,
+    ...(directionId ? { directionId } : {}),
+    studentId,
+    studentName,
+    message: `${studentName}在战斗中壮烈牺牲`,
+    createdAt: now.toISOString(),
+  })
 }
 
 function isClassDefenseDirectionId(value: unknown): value is ClassDefenseDirectionId {
@@ -246,7 +319,10 @@ function buildMonsterPatch(previous: MonsterBroadcastView, next: MonsterBroadcas
   return patch
 }
 
-async function broadcastMonsterDiffs(sessionId: string) {
+async function broadcastMonsterDiffs(
+  sessionId: string,
+  removalReasons = new Map<string, string>()
+) {
   const previous = roomMonsterStates.get(sessionId) || new Map<string, MonsterBroadcastView>()
   const nextMonsters = await getActiveMonsterViews(sessionId)
   const next = new Map(nextMonsters.map((monster) => [monster.id, monster]))
@@ -287,7 +363,7 @@ async function broadcastMonsterDiffs(sessionId: string) {
       data: {
         directionId: monster.directionId,
         monsterId: monster.id,
-        reason: 'REMOVED',
+        reason: removalReasons.get(monster.id) || 'REMOVED',
       },
     })
   }
@@ -361,6 +437,9 @@ async function tickRoom(sessionId: string) {
           requestId: null,
           data: result,
         })
+        if (result.studentDown) {
+          await broadcastStudentDownMessage(sessionId, result.studentId, result.directionId)
+        }
       }
       for (const cancellation of tickResult.combatCancellations) {
         sendToStudent(sessionId, cancellation.studentId, {
@@ -373,7 +452,16 @@ async function tickRoom(sessionId: string) {
         type: 'direction_summary',
         data: tickResult.summary,
       })
-      await broadcastMonsterDiffs(sessionId)
+      const damageReachedMonsters = tickResult.reachedMonsters.filter(
+        (monster) => monster.classHpChanged
+      )
+      for (const reachedMonster of damageReachedMonsters) {
+        broadcastDirectionUnderAttackMessage(sessionId, reachedMonster.directionId)
+      }
+      await broadcastMonsterDiffs(
+        sessionId,
+        new Map(tickResult.reachedMonsters.map((monster) => [monster.monsterId, 'REACHED']))
+      )
       const directions = new Set(
         Array.from(clients.values())
           .filter((client) => client.sessionId === sessionId && client.directionId)
@@ -542,9 +630,16 @@ async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: Cl
     requestId: message.requestId || null,
     data: result,
   })
-  const directionId = await getMonsterDirection(state.sessionId, result.monsterId)
+  const directionId =
+    result.directionId || (await getMonsterDirection(state.sessionId, result.monsterId))
   await broadcastDirectionSummary(state.sessionId)
-  await broadcastMonsterDiffs(state.sessionId)
+  if (result.studentDown) {
+    await broadcastStudentDownMessage(state.sessionId, result.studentId, directionId)
+  }
+  await broadcastMonsterDiffs(
+    state.sessionId,
+    result.monsterKilled ? new Map([[result.monsterId, 'KILLED']]) : undefined
+  )
   if (directionId) {
     await broadcastDirectionSnapshot(state.sessionId, directionId)
   }

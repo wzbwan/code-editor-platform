@@ -54,6 +54,7 @@ interface ClassDefenseCombatResult {
   combatId: string
   sessionId: string
   monsterId: string
+  directionId: ClassDefenseDirectionId | null
   studentId: string
   roundIndex: number
   isCorrect: boolean
@@ -77,6 +78,14 @@ interface ClassDefenseCombatCancellation {
   monsterId: string
   studentId: string
   reason: string
+}
+
+interface ClassDefenseReachedMonster {
+  monsterId: string
+  sessionId: string
+  directionId: ClassDefenseDirectionId
+  classHp: number
+  classHpChanged: boolean
 }
 
 function normalizeClassName(value?: string | null) {
@@ -1506,6 +1515,9 @@ async function resolveClassDefenseCombatAnswer(
     combatId: combat.id,
     sessionId: combat.sessionId,
     monsterId: combat.monsterId,
+    directionId: isClassDefenseDirectionId(combat.monster.directionId)
+      ? combat.monster.directionId
+      : null,
     studentId: combat.studentId,
     roundIndex,
     isCorrect,
@@ -1805,6 +1817,7 @@ export async function tickClassDefenseSession(sessionId: string) {
     const config = parseClassDefenseConfig(session.configJson)
     const combatResults: ClassDefenseCombatResult[] = []
     const combatCancellations: ClassDefenseCombatCancellation[] = []
+    const reachedMonsters: ClassDefenseReachedMonster[] = []
 
     const expiredCombats = await tx.classDefenseCombat.findMany({
       where: {
@@ -1881,7 +1894,12 @@ export async function tickClassDefenseSession(sessionId: string) {
       const nextProgress = Math.min(1, monster.routeProgress + monster.speed * elapsedSeconds)
 
       if (nextProgress >= 1) {
+        const classHpBeforeHit = nextClassHp
         nextClassHp = Math.max(0, nextClassHp - 1)
+        const classHpChanged = nextClassHp < classHpBeforeHit
+        const directionId = isClassDefenseDirectionId(monster.directionId)
+          ? monster.directionId
+          : null
         const activeCombatsForMonster = await tx.classDefenseCombat.findMany({
           where: {
             sessionId,
@@ -1933,9 +1951,19 @@ export async function tickClassDefenseSession(sessionId: string) {
           type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_REACHED,
           payload: {
             monsterId: monster.id,
+            directionId: monster.directionId,
             classHp: nextClassHp,
           },
         })
+        if (directionId) {
+          reachedMonsters.push({
+            monsterId: monster.id,
+            sessionId,
+            directionId,
+            classHp: nextClassHp,
+            classHpChanged,
+          })
+        }
       } else if (nextProgress !== monster.routeProgress) {
         await tx.classDefenseMonster.update({
           where: { id: monster.id },
@@ -2011,6 +2039,7 @@ export async function tickClassDefenseSession(sessionId: string) {
     return {
       combatResults,
       combatCancellations,
+      reachedMonsters,
     }
   })
 
@@ -2022,5 +2051,6 @@ export async function tickClassDefenseSession(sessionId: string) {
     summary: await getClassDefenseDirectionSummary(sessionId),
     combatResults: tickResult.combatResults,
     combatCancellations: tickResult.combatCancellations,
+    reachedMonsters: tickResult.reachedMonsters,
   }
 }
