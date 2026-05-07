@@ -11,6 +11,7 @@ import {
   markClassDefenseHeartbeat,
   selectClassDefenseDirection,
   startClassDefenseCombat,
+  startClassDefenseBossCombat,
   submitClassDefenseAnswer,
   tickClassDefenseSession,
 } from '@/lib/class-defense/service'
@@ -36,6 +37,7 @@ interface ClientMessage {
   requestId?: string
   ticket?: string
   sessionId?: string
+  bossId?: string
   monsterId?: string
   combatId?: string
   answer?: string
@@ -49,8 +51,14 @@ const host = process.env.CLASS_DEFENSE_WS_HOST || '127.0.0.1'
 const clients = new Map<WebSocket, ClientState>()
 const roomClients = new Map<string, Set<WebSocket>>()
 const roomTimers = new Map<string, NodeJS.Timeout>()
+const roomBroadcastTimers = new Map<string, NodeJS.Timeout>()
+const roomBroadcastRemovalReasons = new Map<string, Map<string, string>>()
 const tickingRooms = new Set<string>()
 const roomMonsterStates = new Map<string, Map<string, MonsterBroadcastView>>()
+const ROOM_STATE_BROADCAST_DELAY_MS = Number.parseInt(
+  process.env.CLASS_DEFENSE_ROOM_BROADCAST_DELAY_MS || '100',
+  10
+)
 
 interface MonsterBroadcastView {
   id: string
@@ -58,6 +66,8 @@ interface MonsterBroadcastView {
   waveIndex: number
   laneIndex: number
   monsterKey: string
+  monsterName: string | null
+  imagePath: string | null
   status: string
   hp: number
   maxHp: number
@@ -240,20 +250,6 @@ async function broadcastDirectionDefenders(sessionId: string, directionId: Class
   })
 }
 
-async function getMonsterDirection(sessionId: string, monsterId: string) {
-  const monster = await prisma.classDefenseMonster.findFirst({
-    where: {
-      id: monsterId,
-      sessionId,
-    },
-    select: {
-      directionId: true,
-    },
-  })
-
-  return isClassDefenseDirectionId(monster?.directionId) ? monster.directionId : null
-}
-
 async function getActiveMonsterViews(sessionId: string) {
   const monsters = await prisma.classDefenseMonster.findMany({
     where: {
@@ -277,6 +273,8 @@ async function getActiveMonsterViews(sessionId: string) {
       waveIndex: true,
       laneIndex: true,
       monsterKey: true,
+      monsterName: true,
+      imagePath: true,
       status: true,
       hp: true,
       maxHp: true,
@@ -306,10 +304,11 @@ async function refreshMonsterState(sessionId: string) {
 function buildMonsterPatch(previous: MonsterBroadcastView, next: MonsterBroadcastView) {
   const patch: Partial<Pick<
     MonsterBroadcastView,
-    'hp' | 'status' | 'routeProgress' | 'lockedByStudentId'
+    'hp' | 'maxHp' | 'status' | 'routeProgress' | 'lockedByStudentId'
   >> = {}
 
   if (previous.hp !== next.hp) patch.hp = next.hp
+  if (previous.maxHp !== next.maxHp) patch.maxHp = next.maxHp
   if (previous.status !== next.status) patch.status = next.status
   if (previous.routeProgress !== next.routeProgress) patch.routeProgress = next.routeProgress
   if (previous.lockedByStudentId !== next.lockedByStudentId) {
@@ -317,6 +316,29 @@ function buildMonsterPatch(previous: MonsterBroadcastView, next: MonsterBroadcas
   }
 
   return patch
+}
+
+function toBossBroadcastView(monster: MonsterBroadcastView) {
+  return {
+    id: monster.id,
+    bossId: monster.id,
+    monsterId: monster.id,
+    directionId: monster.directionId,
+    bossKey: monster.monsterKey,
+    monsterKey: monster.monsterKey,
+    bossName: monster.monsterName || 'Boss',
+    monsterName: monster.monsterName || 'Boss',
+    imagePath: monster.imagePath || undefined,
+    phase: 1,
+    status: monster.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED ? 'DEFEATED' : 'ACTIVE',
+    hp: monster.hp,
+    maxHp: monster.maxHp,
+    bossHp: monster.hp,
+    bossMaxHp: monster.maxHp,
+    waveIndex: monster.waveIndex,
+    laneIndex: monster.laneIndex,
+    routeProgress: monster.routeProgress,
+  }
 }
 
 async function broadcastMonsterDiffs(
@@ -337,6 +359,14 @@ async function broadcastMonsterDiffs(
           monster,
         },
       })
+      broadcast(sessionId, {
+        type: 'boss_updated',
+        data: {
+          bossId: monster.id,
+          directionId: monster.directionId,
+          patch: toBossBroadcastView(monster),
+        },
+      })
       continue
     }
 
@@ -348,6 +378,18 @@ async function broadcastMonsterDiffs(
           directionId: monster.directionId,
           monsterId: monster.id,
           patch,
+        },
+      })
+      broadcast(sessionId, {
+        type: 'boss_updated',
+        data: {
+          bossId: monster.id,
+          directionId: monster.directionId,
+          patch: {
+            ...patch,
+            bossHp: monster.hp,
+            bossMaxHp: monster.maxHp,
+          },
         },
       })
     }
@@ -366,9 +408,60 @@ async function broadcastMonsterDiffs(
         reason: removalReasons.get(monster.id) || 'REMOVED',
       },
     })
+    broadcast(sessionId, {
+      type: 'boss_removed',
+      data: {
+        directionId: monster.directionId,
+        bossId: monster.id,
+        monsterId: monster.id,
+        reason: removalReasons.get(monster.id) || 'REMOVED',
+      },
+    })
   }
 
   roomMonsterStates.set(sessionId, next)
+}
+
+function activeDirectionsForRoom(sessionId: string) {
+  return new Set(
+    Array.from(clients.values())
+      .filter((client) => client.sessionId === sessionId && client.directionId)
+      .map((client) => client.directionId as ClassDefenseDirectionId)
+  )
+}
+
+async function broadcastRoomState(sessionId: string, removalReasons = new Map<string, string>()) {
+  await broadcastDirectionSummary(sessionId)
+  await broadcastMonsterDiffs(sessionId, removalReasons)
+
+  for (const directionId of Array.from(activeDirectionsForRoom(sessionId))) {
+    await broadcastDirectionSnapshot(sessionId, directionId)
+  }
+}
+
+function scheduleRoomStateBroadcast(
+  sessionId: string,
+  removalReasons = new Map<string, string>()
+) {
+  const pendingReasons = roomBroadcastRemovalReasons.get(sessionId) || new Map<string, string>()
+  for (const [monsterId, reason] of Array.from(removalReasons.entries())) {
+    pendingReasons.set(monsterId, reason)
+  }
+  roomBroadcastRemovalReasons.set(sessionId, pendingReasons)
+
+  if (roomBroadcastTimers.has(sessionId)) {
+    return
+  }
+
+  const timer = setTimeout(() => {
+    roomBroadcastTimers.delete(sessionId)
+    const reasons = roomBroadcastRemovalReasons.get(sessionId) || new Map<string, string>()
+    roomBroadcastRemovalReasons.delete(sessionId)
+    void broadcastRoomState(sessionId, reasons).catch((error) => {
+      console.error(`[class-defense-ws] room state broadcast failed for ${sessionId}`, error)
+    })
+  }, Math.max(0, ROOM_STATE_BROADCAST_DELAY_MS))
+  roomBroadcastTimers.set(sessionId, timer)
 }
 
 function addToRoom(sessionId: string, ws: WebSocket) {
@@ -391,6 +484,12 @@ function removeFromRoom(sessionId: string, ws: WebSocket) {
       clearInterval(timer)
       roomTimers.delete(sessionId)
     }
+    const broadcastTimer = roomBroadcastTimers.get(sessionId)
+    if (broadcastTimer) {
+      clearTimeout(broadcastTimer)
+      roomBroadcastTimers.delete(sessionId)
+    }
+    roomBroadcastRemovalReasons.delete(sessionId)
     roomMonsterStates.delete(sessionId)
   }
 }
@@ -433,10 +532,37 @@ async function tickRoom(sessionId: string) {
     if (tickResult) {
       for (const result of tickResult.combatResults) {
         sendToStudent(sessionId, result.studentId, {
-          type: 'combat_result',
+          type: result.isBoss ? 'boss_combat_result' : 'combat_result',
           requestId: null,
           data: result,
         })
+        if (result.isBoss) {
+          broadcast(sessionId, {
+            type: 'boss_updated',
+            data: {
+              bossId: result.bossId || result.monsterId,
+              directionId: result.directionId,
+              patch: {
+                hp: result.bossHp ?? result.monsterHp,
+                maxHp: result.bossMaxHp,
+                phase: 1,
+                totalDamage: result.totalDamage,
+              },
+            },
+          })
+          if (result.bossDefeatedNow) {
+            broadcast(sessionId, {
+              type: 'boss_defeated',
+              data: {
+                bossId: result.bossId || result.monsterId,
+                monsterId: result.monsterId,
+                directionId: result.directionId,
+                status: 'DEFEATED',
+                rewards: result.rewards || [],
+              },
+            })
+          }
+        }
         if (result.studentDown) {
           await broadcastStudentDownMessage(sessionId, result.studentId, result.directionId)
         }
@@ -462,12 +588,7 @@ async function tickRoom(sessionId: string) {
         sessionId,
         new Map(tickResult.reachedMonsters.map((monster) => [monster.monsterId, 'REACHED']))
       )
-      const directions = new Set(
-        Array.from(clients.values())
-          .filter((client) => client.sessionId === sessionId && client.directionId)
-          .map((client) => client.directionId as ClassDefenseDirectionId)
-      )
-      for (const directionId of Array.from(directions)) {
+      for (const directionId of Array.from(activeDirectionsForRoom(sessionId))) {
         await broadcastDirectionSnapshot(sessionId, directionId)
       }
     }
@@ -572,12 +693,31 @@ async function handleAttack(ws: WebSocket, state: ClientState, message: ClientMe
     requestId: message.requestId || null,
     data: combat,
   })
-  const directionId = await getMonsterDirection(state.sessionId, monsterId)
-  await broadcastDirectionSummary(state.sessionId)
-  await broadcastMonsterDiffs(state.sessionId)
-  if (directionId) {
-    await broadcastDirectionSnapshot(state.sessionId, directionId)
+  scheduleRoomStateBroadcast(state.sessionId)
+}
+
+async function handleAttackBoss(ws: WebSocket, state: ClientState, message: ClientMessage) {
+  if (!state.sessionId || !state.studentId) {
+    throw new Error('请先进入守护班级')
   }
+
+  const bossId = String(message.bossId || message.monsterId || '').trim()
+  if (!bossId) {
+    throw new Error('缺少 Boss ID')
+  }
+
+  const combat = await startClassDefenseBossCombat({
+    sessionId: state.sessionId,
+    studentId: state.studentId,
+    bossId,
+    directionId: message.directionId ?? state.directionId,
+  })
+
+  send(ws, {
+    type: 'boss_combat_started',
+    requestId: message.requestId || null,
+    data: combat,
+  })
 }
 
 async function handleSelectDirection(ws: WebSocket, state: ClientState, message: ClientMessage) {
@@ -626,22 +766,62 @@ async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: Cl
   })
 
   send(ws, {
-    type: 'combat_result',
+    type: result.isBoss ? 'boss_combat_result' : 'combat_result',
     requestId: message.requestId || null,
     data: result,
   })
-  const directionId =
-    result.directionId || (await getMonsterDirection(state.sessionId, result.monsterId))
-  await broadcastDirectionSummary(state.sessionId)
-  if (result.studentDown) {
-    await broadcastStudentDownMessage(state.sessionId, result.studentId, directionId)
+  if (result.isBoss) {
+    broadcast(state.sessionId, {
+      type: 'boss_updated',
+      data: {
+        bossId: result.bossId || result.monsterId,
+        directionId: result.directionId,
+        patch: {
+          hp: result.bossHp ?? result.monsterHp,
+          maxHp: result.bossMaxHp,
+          phase: 1,
+          totalDamage: result.totalDamage,
+        },
+      },
+    })
+    broadcast(state.sessionId, {
+      type: 'boss_damaged',
+      data: {
+        bossId: result.bossId || result.monsterId,
+        monsterId: result.monsterId,
+        directionId: result.directionId,
+        studentId: result.studentId,
+        damageToBoss: result.damageToBoss || 0,
+        damageToMonster: result.damageToMonster,
+        bossHp: result.bossHp ?? result.monsterHp,
+        bossMaxHp: result.bossMaxHp,
+        myDamage: result.myDamage,
+        totalDamage: result.totalDamage,
+        bossDefeated: result.bossDefeated || false,
+      },
+    })
+    if (result.bossDefeatedNow) {
+      broadcast(state.sessionId, {
+        type: 'boss_defeated',
+        data: {
+          bossId: result.bossId || result.monsterId,
+          monsterId: result.monsterId,
+          directionId: result.directionId,
+          status: 'DEFEATED',
+          rewards: result.rewards || [],
+        },
+      })
+    }
   }
-  await broadcastMonsterDiffs(
+  scheduleRoomStateBroadcast(
     state.sessionId,
     result.monsterKilled ? new Map([[result.monsterId, 'KILLED']]) : undefined
   )
-  if (directionId) {
-    await broadcastDirectionSnapshot(state.sessionId, directionId)
+  if (result.studentDown) {
+    void broadcastStudentDownMessage(state.sessionId, result.studentId, result.directionId)
+      .catch((error) => {
+        console.error('[class-defense-ws] student down public message failed', error)
+      })
   }
 }
 
@@ -673,12 +853,7 @@ async function handleFleeCombat(ws: WebSocket, state: ClientState, message: Clie
   })
 
   if (result.success) {
-    const directionId = await getMonsterDirection(state.sessionId, result.monsterId)
-    await broadcastDirectionSummary(state.sessionId)
-    await broadcastMonsterDiffs(state.sessionId)
-    if (directionId) {
-      await broadcastDirectionSnapshot(state.sessionId, directionId)
-    }
+    scheduleRoomStateBroadcast(state.sessionId)
   }
 }
 
@@ -709,6 +884,11 @@ async function handleMessage(ws: WebSocket, state: ClientState, raw: WebSocket.R
 
   if (message.type === 'attack_monster') {
     await handleAttack(ws, state, message)
+    return
+  }
+
+  if (message.type === 'attack_boss') {
+    await handleAttackBoss(ws, state, message)
     return
   }
 
@@ -800,6 +980,9 @@ wss.on('connection', (ws) => {
 async function shutdown() {
   for (const timer of Array.from(roomTimers.values())) {
     clearInterval(timer)
+  }
+  for (const timer of Array.from(roomBroadcastTimers.values())) {
+    clearTimeout(timer)
   }
   wss.close()
   await prisma.$disconnect()

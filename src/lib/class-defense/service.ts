@@ -1,9 +1,10 @@
+import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { POINT_SOURCE } from '@/lib/constants'
 import { evaluateQuestionAnswer, getQuestionOptionEntries } from '@/lib/quiz'
 import { createStudentPointRecordWithTx } from '@/lib/student-points'
-import { calculatePetStats } from '@/lib/pets/service'
+import { calculatePetStats, convertPointDeltaToPetExp } from '@/lib/pets/service'
 import { getPetSpecies } from '@/lib/pets/registry'
 import {
   CLASS_DEFENSE_COMBAT_STATUS,
@@ -54,15 +55,24 @@ interface ClassDefenseCombatResult {
   combatId: string
   sessionId: string
   monsterId: string
+  bossId?: string
   directionId: ClassDefenseDirectionId | null
   studentId: string
   roundIndex: number
   isCorrect: boolean
+  isBoss?: boolean
+  damageToBoss?: number
   damageToMonster: number
   damageToStudent: number
   isCritical: boolean
   isDodged: boolean
   battleStats: ClassDefenseBattleStats
+  bossHp?: number
+  bossMaxHp?: number
+  myDamage?: number
+  totalDamage?: number
+  bossDefeated?: boolean
+  bossDefeatedNow?: boolean
   monsterHp: number
   monsterKilled: boolean
   studentHp: number
@@ -70,6 +80,7 @@ interface ClassDefenseCombatResult {
   battleEnded: boolean
   nextQuestion: ReturnType<typeof publicQuestion> | null
   reviveAt: Date | null
+  rewards?: ClassDefenseBossReward[]
 }
 
 interface ClassDefenseCombatCancellation {
@@ -87,6 +98,79 @@ interface ClassDefenseReachedMonster {
   classHp: number
   classHpChanged: boolean
 }
+
+interface ClassDefenseEventInput {
+  sessionId: string
+  type: string
+  payload?: unknown
+}
+
+interface ClassDefenseBossReward {
+  studentId: string
+  damage: number
+  expReward: number
+  pointReward: number
+}
+
+interface ClassDefenseQuestionRecord {
+  id: string
+  content: string
+  type: string
+  score: number
+  answer: string
+  optionA: string | null
+  optionB: string | null
+  optionC: string | null
+  optionD: string | null
+}
+
+interface ClassDefenseBossRuntimeState {
+  id: string
+  directionId: ClassDefenseDirectionId
+  monsterKey: string
+  monsterName: string | null
+  monsterLevel: number
+  imagePath: string | null
+  waveIndex: number
+  laneIndex: number
+  phase: number
+  hp: number
+  maxHp: number
+  attack: number
+  status: 'WAITING' | 'ACTIVE' | 'DEFEATED' | 'ESCAPED'
+  routeProgress: number
+  spawnedAt: Date
+  contributionByStudentId: Map<string, number>
+  settlementStarted: boolean
+}
+
+interface ClassDefenseBossCombatRuntimeState {
+  id: string
+  sessionId: string
+  bossId: string
+  studentId: string
+  directionId: ClassDefenseDirectionId
+  question: ClassDefenseQuestionRecord
+  waveIndex: number
+  startedAt: Date
+  expiresAt: Date
+}
+
+interface ClassDefenseRuntimeParticipantState {
+  hp: number
+  maxHp: number
+  status: 'ALIVE' | 'DOWN'
+  reviveAt: Date | null
+}
+
+interface ClassDefenseBossRoomRuntimeState {
+  bosses: Map<string, ClassDefenseBossRuntimeState>
+  activeCombats: Map<string, ClassDefenseBossCombatRuntimeState>
+  participantByStudentId: Map<string, ClassDefenseRuntimeParticipantState>
+  questionCacheByPaperId: Map<string, ClassDefenseQuestionRecord[]>
+}
+
+const bossRoomRuntimeBySessionId = new Map<string, ClassDefenseBossRoomRuntimeState>()
 
 function normalizeClassName(value?: string | null) {
   return value?.trim() || ''
@@ -147,51 +231,260 @@ function publicQuestion(question: {
   }
 }
 
-async function appendEvent(
-  tx: Tx,
-  input: {
-    sessionId: string
-    type: string
-    payload?: unknown
+function getBossRoomRuntime(sessionId: string) {
+  let room = bossRoomRuntimeBySessionId.get(sessionId)
+  if (!room) {
+    room = {
+      bosses: new Map(),
+      activeCombats: new Map(),
+      participantByStudentId: new Map(),
+      questionCacheByPaperId: new Map(),
+    }
+    bossRoomRuntimeBySessionId.set(sessionId, room)
+  }
+
+  return room
+}
+
+function getRuntimeBossStatus(dbStatus: string): ClassDefenseBossRuntimeState['status'] {
+  if (dbStatus === CLASS_DEFENSE_MONSTER_STATUS.WAITING) {
+    return 'WAITING'
+  }
+  if (dbStatus === CLASS_DEFENSE_MONSTER_STATUS.KILLED) {
+    return 'DEFEATED'
+  }
+  if (dbStatus === CLASS_DEFENSE_MONSTER_STATUS.REACHED) {
+    return 'ESCAPED'
+  }
+  return 'ACTIVE'
+}
+
+function getDbMonsterStatusForRuntimeBoss(status: ClassDefenseBossRuntimeState['status']) {
+  if (status === 'WAITING') {
+    return CLASS_DEFENSE_MONSTER_STATUS.WAITING
+  }
+  if (status === 'DEFEATED') {
+    return CLASS_DEFENSE_MONSTER_STATUS.KILLED
+  }
+  if (status === 'ESCAPED') {
+    return CLASS_DEFENSE_MONSTER_STATUS.REACHED
+  }
+  return CLASS_DEFENSE_MONSTER_STATUS.WALKING
+}
+
+function syncRuntimeBossFromDb(
+  sessionId: string,
+  monster: {
+    id: string
+    directionId: string
+    monsterKey: string
+    monsterName: string | null
+    monsterLevel: number
+    imagePath: string | null
+    waveIndex: number
+    laneIndex: number | null
+    hp: number
+    maxHp: number
+    attack: number
+    status: string
+    routeProgress: number
+    spawnedAt: Date
   }
 ) {
+  if (!isClassDefenseDirectionId(monster.directionId)) {
+    return null
+  }
+
+  const room = getBossRoomRuntime(sessionId)
+  let boss = room.bosses.get(monster.id)
+  if (!boss) {
+    boss = {
+      id: monster.id,
+      directionId: monster.directionId,
+      monsterKey: monster.monsterKey,
+      monsterName: monster.monsterName,
+      monsterLevel: monster.monsterLevel,
+      imagePath: monster.imagePath,
+      waveIndex: monster.waveIndex,
+      laneIndex: monster.laneIndex ?? 0,
+      phase: 1,
+      hp: Math.max(0, monster.hp),
+      maxHp: monster.maxHp,
+      attack: monster.attack,
+      status: getRuntimeBossStatus(monster.status),
+      routeProgress: monster.routeProgress,
+      spawnedAt: monster.spawnedAt,
+      contributionByStudentId: new Map(),
+      settlementStarted: monster.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED,
+    }
+    room.bosses.set(monster.id, boss)
+    return boss
+  }
+
+  boss.directionId = monster.directionId
+  boss.monsterKey = monster.monsterKey
+  boss.monsterName = monster.monsterName
+  boss.monsterLevel = monster.monsterLevel
+  boss.imagePath = monster.imagePath
+  boss.waveIndex = monster.waveIndex
+  boss.laneIndex = monster.laneIndex ?? boss.laneIndex
+  boss.maxHp = monster.maxHp
+  boss.attack = monster.attack
+  boss.routeProgress = monster.routeProgress
+  boss.spawnedAt = monster.spawnedAt
+
+  const dbRuntimeStatus = getRuntimeBossStatus(monster.status)
+  if (boss.status !== 'DEFEATED' && boss.status !== 'ESCAPED') {
+    boss.status = dbRuntimeStatus
+  }
+  if (monster.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED) {
+    boss.status = 'DEFEATED'
+    boss.hp = 0
+    boss.settlementStarted = true
+  } else if (monster.status === CLASS_DEFENSE_MONSTER_STATUS.REACHED) {
+    boss.status = 'ESCAPED'
+  }
+
+  return boss
+}
+
+function getRuntimeParticipant(
+  room: ClassDefenseBossRoomRuntimeState,
+  studentId: string,
+  fallback: {
+    hp: number
+    maxHp: number
+    status: string
+    reviveAt: Date | null
+  },
+  battleStats: ClassDefenseBattleStats,
+  now: Date
+) {
+  let participant = room.participantByStudentId.get(studentId)
+  if (!participant) {
+    participant = {
+      hp: Math.min(fallback.hp, battleStats.maxHp),
+      maxHp: battleStats.maxHp,
+      status: fallback.status === CLASS_DEFENSE_PARTICIPANT_STATUS.DOWN ? 'DOWN' : 'ALIVE',
+      reviveAt: fallback.reviveAt,
+    }
+    room.participantByStudentId.set(studentId, participant)
+  }
+
+  participant.maxHp = battleStats.maxHp
+  if (participant.status === 'DOWN' && participant.reviveAt && participant.reviveAt <= now) {
+    participant.status = 'ALIVE'
+    participant.hp = participant.maxHp
+    participant.reviveAt = null
+  }
+
+  return participant
+}
+
+function getBossTotalDamage(boss: ClassDefenseBossRuntimeState) {
+  return Array.from(boss.contributionByStudentId.values())
+    .reduce((sum, damage) => sum + damage, 0)
+}
+
+async function appendEvent(
+  tx: Tx,
+  input: ClassDefenseEventInput
+) {
+  return appendEvents(tx, [input])
+}
+
+async function appendEvents(tx: Tx, inputs: ClassDefenseEventInput[]) {
+  if (inputs.length === 0) {
+    return { count: 0 }
+  }
+
+  const sessionId = inputs[0].sessionId
+  if (inputs.some((input) => input.sessionId !== sessionId)) {
+    throw new Error('事件批量写入必须属于同一守护班级会话')
+  }
+
   const session = await tx.classDefenseSession.update({
-    where: { id: input.sessionId },
+    where: { id: sessionId },
     data: {
       stateVersion: {
-        increment: 1,
+        increment: inputs.length,
       },
     },
     select: {
       stateVersion: true,
     },
   })
+  const firstStateVersion = session.stateVersion - inputs.length + 1
 
-  return tx.classDefenseEvent.create({
-    data: {
-      sessionId: input.sessionId,
+  return tx.classDefenseEvent.createMany({
+    data: inputs.map((input, index) => ({
+      sessionId,
       type: input.type,
       payload: JSON.stringify(input.payload ?? {}),
-      stateVersion: session.stateVersion,
-    },
+      stateVersion: firstStateVersion + index,
+    })),
   })
 }
 
-function pickQuestion<T>(questions: T[]) {
-  if (questions.length === 0) {
-    return null
-  }
-
-  return questions[Math.floor(Math.random() * questions.length)]
-}
-
-function getWaveQuestionPool<T>(
-  questions: T[],
+async function pickQuestionForWaveFromDb(
+  tx: Tx,
+  paperId: string,
   config: ClassDefenseConfig,
   waveIndex: number
 ) {
+  const questionCount = await tx.paperQuestion.count({
+    where: { paperId },
+  })
+  if (questionCount === 0) {
+    return null
+  }
+
+  const waveIndexes = Array.from(new Set(config.waves.map((wave) => wave.waveIndex)))
+    .sort((a, b) => a - b)
+  const waveCount = Math.max(1, waveIndexes.length)
+  const matchedPosition = waveIndexes.indexOf(waveIndex)
+  const wavePosition = matchedPosition >= 0 ? matchedPosition : 0
+  const start = Math.floor((questionCount * wavePosition) / waveCount)
+  const end = Math.ceil((questionCount * (wavePosition + 1)) / waveCount)
+  const poolSize = Math.max(1, Math.max(start + 1, end) - start)
+  const offset = start + Math.floor(Math.random() * poolSize)
+
+  return tx.paperQuestion.findFirst({
+    where: { paperId },
+    orderBy: [{ orderIndex: 'asc' }, { id: 'asc' }],
+    skip: Math.min(offset, questionCount - 1),
+  })
+}
+
+async function pickBossQuestionForWave(
+  sessionId: string,
+  paperId: string,
+  config: ClassDefenseConfig,
+  waveIndex: number
+) {
+  const room = getBossRoomRuntime(sessionId)
+  let questions = room.questionCacheByPaperId.get(paperId)
+  if (!questions) {
+    questions = await prisma.paperQuestion.findMany({
+      where: { paperId },
+      orderBy: [{ orderIndex: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        content: true,
+        type: true,
+        score: true,
+        answer: true,
+        optionA: true,
+        optionB: true,
+        optionC: true,
+        optionD: true,
+      },
+    })
+    room.questionCacheByPaperId.set(paperId, questions)
+  }
+
   if (questions.length === 0) {
-    return []
+    return null
   }
 
   const waveIndexes = Array.from(new Set(config.waves.map((wave) => wave.waveIndex)))
@@ -201,16 +494,10 @@ function getWaveQuestionPool<T>(
   const wavePosition = matchedPosition >= 0 ? matchedPosition : 0
   const start = Math.floor((questions.length * wavePosition) / waveCount)
   const end = Math.ceil((questions.length * (wavePosition + 1)) / waveCount)
+  const poolSize = Math.max(1, Math.max(start + 1, end) - start)
+  const offset = start + Math.floor(Math.random() * poolSize)
 
-  return questions.slice(start, Math.max(start + 1, end))
-}
-
-function pickQuestionForWave<T>(
-  questions: T[],
-  config: ClassDefenseConfig,
-  waveIndex: number
-) {
-  return pickQuestion(getWaveQuestionPool(questions, config, waveIndex))
+  return questions[Math.min(offset, questions.length - 1)]
 }
 
 function rollPercent(rate: number) {
@@ -548,6 +835,322 @@ function withLaneIndexes<T extends { waveIndex: number; directionId?: string | n
   })
 }
 
+function isActiveClassDefenseBossStatus(status: string) {
+  return status === CLASS_DEFENSE_MONSTER_STATUS.WALKING ||
+    status === CLASS_DEFENSE_MONSTER_STATUS.COMBAT
+}
+
+function getBossStatus(status: string) {
+  if (status === CLASS_DEFENSE_MONSTER_STATUS.KILLED) {
+    return 'DEFEATED'
+  }
+  if (status === CLASS_DEFENSE_MONSTER_STATUS.REACHED) {
+    return 'ESCAPED'
+  }
+  return 'ACTIVE'
+}
+
+function isBossCombatRecord(combat: ClassDefenseCombatWithSessionMonster) {
+  return combat.damageToMonster === 0 &&
+    combat.damageToStudent === 0 &&
+    combat.monster.lockedByStudentId !== combat.studentId
+}
+
+async function getBossDamageTotalsWithTx(tx: Tx, sessionId: string, monsterId: string) {
+  const [total, mine] = await Promise.all([
+    tx.classDefenseCombat.groupBy({
+      by: ['monsterId'],
+      where: {
+        sessionId,
+        monsterId,
+        status: CLASS_DEFENSE_COMBAT_STATUS.RESOLVED,
+        damageToMonster: {
+          gt: 0,
+        },
+      },
+      _sum: {
+        damageToMonster: true,
+      },
+    }),
+    tx.classDefenseCombat.groupBy({
+      by: ['monsterId', 'studentId'],
+      where: {
+        sessionId,
+        monsterId,
+        status: CLASS_DEFENSE_COMBAT_STATUS.RESOLVED,
+        damageToMonster: {
+          gt: 0,
+        },
+      },
+      _sum: {
+        damageToMonster: true,
+      },
+    }),
+  ])
+
+  return {
+    totalDamage: total[0]?._sum.damageToMonster || 0,
+    byStudentId: new Map(mine.map((item) => [
+      item.studentId,
+      item._sum.damageToMonster || 0,
+    ] as const)),
+  }
+}
+
+async function settleBossRewardsWithTx(
+  tx: Tx,
+  input: {
+    sessionId: string
+    monsterId: string
+    bossName?: string | null
+    basePointReward: number
+    occurredAt: Date
+    contributionByStudentId: Map<string, number>
+  }
+): Promise<ClassDefenseBossReward[]> {
+  const totalDamage = Math.max(
+    1,
+    Array.from(input.contributionByStudentId.values()).reduce((sum, damage) => sum + damage, 0)
+  )
+  const rewards: ClassDefenseBossReward[] = []
+  const rewardReason = input.bossName
+    ? `守护班级击败 Boss：${input.bossName}`
+    : '守护班级击败 Boss 奖励'
+
+  for (const [studentId, damage] of Array.from(input.contributionByStudentId.entries())) {
+    if (damage <= 0) {
+      continue
+    }
+
+    const share = damage / totalDamage
+    const pointReward = input.basePointReward > 0
+      ? Math.max(1, Math.round(input.basePointReward * share))
+      : 0
+    const expReward = pointReward > 0 ? convertPointDeltaToPetExp(pointReward) : 0
+
+    if (pointReward > 0) {
+      await createStudentPointRecordWithTx(tx, {
+        studentId,
+        delta: pointReward,
+        reason: rewardReason,
+        occurredAt: input.occurredAt,
+        source: POINT_SOURCE.CLASS_DEFENSE,
+      })
+    }
+
+    rewards.push({
+      studentId,
+      damage,
+      expReward,
+      pointReward,
+    })
+  }
+
+  return rewards
+}
+
+async function getBossContributionViews(
+  sessionId: string,
+  monsterIds: string[],
+  studentId?: string | null
+) {
+  if (monsterIds.length === 0) {
+    return {
+      totalByMonsterId: new Map<string, number>(),
+      myByMonsterId: new Map<string, number>(),
+    }
+  }
+
+  const [totals, mine] = await Promise.all([
+    prisma.classDefenseCombat.groupBy({
+      by: ['monsterId'],
+      where: {
+        sessionId,
+        monsterId: {
+          in: monsterIds,
+        },
+        status: CLASS_DEFENSE_COMBAT_STATUS.RESOLVED,
+        damageToMonster: {
+          gt: 0,
+        },
+      },
+      _sum: {
+        damageToMonster: true,
+      },
+    }),
+    studentId
+      ? prisma.classDefenseCombat.groupBy({
+          by: ['monsterId'],
+          where: {
+            sessionId,
+            studentId,
+            monsterId: {
+              in: monsterIds,
+            },
+            status: CLASS_DEFENSE_COMBAT_STATUS.RESOLVED,
+            damageToMonster: {
+              gt: 0,
+            },
+          },
+          _sum: {
+            damageToMonster: true,
+          },
+        })
+      : Promise.resolve([]),
+  ])
+
+  return {
+    totalByMonsterId: new Map(totals.map((item) => [
+      item.monsterId,
+      item._sum.damageToMonster || 0,
+    ] as const)),
+    myByMonsterId: new Map(mine.map((item) => [
+      item.monsterId,
+      item._sum.damageToMonster || 0,
+    ] as const)),
+  }
+}
+
+async function buildBossViews<T extends {
+  id: string
+  directionId: string
+  waveIndex: number
+  laneIndex?: number | null
+  monsterKey: string
+  monsterName?: string | null
+  monsterLevel: number
+  imagePath?: string | null
+  status: string
+  hp: number
+  maxHp: number
+  attack: number
+  routeProgress?: number | null
+  spawnedAt: Date
+}>(
+  sessionId: string,
+  monsters: T[],
+  studentId?: string | null
+) {
+  const activeBosses = monsters.filter((monster) =>
+    isClassDefenseDirectionId(monster.directionId) &&
+    isActiveClassDefenseBossStatus(monster.status)
+  )
+
+  return activeBosses.map((monster) => {
+    const boss = syncRuntimeBossFromDb(sessionId, {
+      id: monster.id,
+      directionId: monster.directionId,
+      monsterKey: monster.monsterKey,
+      monsterName: monster.monsterName || null,
+      monsterLevel: monster.monsterLevel,
+      imagePath: monster.imagePath || null,
+      waveIndex: monster.waveIndex,
+      laneIndex: monster.laneIndex ?? 0,
+      hp: monster.hp,
+      maxHp: monster.maxHp,
+      attack: monster.attack,
+      status: monster.status,
+      routeProgress: monster.routeProgress ?? 0,
+      spawnedAt: monster.spawnedAt,
+    })
+    const totalDamage = boss ? getBossTotalDamage(boss) : 0
+    const myDamage = studentId && boss
+      ? boss.contributionByStudentId.get(studentId) || 0
+      : 0
+
+    return {
+      id: monster.id,
+      bossId: monster.id,
+      monsterId: monster.id,
+      directionId: monster.directionId,
+      bossKey: boss?.monsterKey || monster.monsterKey,
+      monsterKey: boss?.monsterKey || monster.monsterKey,
+      bossName: boss?.monsterName || monster.monsterName || 'Boss',
+      monsterName: boss?.monsterName || monster.monsterName || 'Boss',
+      imagePath: boss?.imagePath || monster.imagePath || undefined,
+      phase: 1,
+      status: boss?.status === 'DEFEATED'
+        ? 'DEFEATED'
+        : boss?.status === 'ESCAPED'
+          ? 'ESCAPED'
+          : getBossStatus(monster.status),
+      hp: boss?.hp ?? monster.hp,
+      maxHp: boss?.maxHp ?? monster.maxHp,
+      bossHp: boss?.hp ?? monster.hp,
+      bossMaxHp: boss?.maxHp ?? monster.maxHp,
+      myDamage,
+      totalDamage,
+      waveIndex: monster.waveIndex,
+      laneIndex: boss?.laneIndex ?? monster.laneIndex ?? 0,
+      routeProgress: boss?.routeProgress ?? monster.routeProgress ?? 0,
+    }
+  })
+}
+
+function applyBossRuntimeToMonsterViews<T extends {
+  id: string
+  directionId?: string | null
+  monsterKey: string
+  monsterName?: string | null
+  monsterLevel: number
+  imagePath?: string | null
+  waveIndex: number
+  laneIndex?: number | null
+  hp: number
+  maxHp: number
+  attack: number
+  status: string
+  routeProgress: number
+  spawnedAt: Date
+}>(sessionId: string, monsters: T[]) {
+  return monsters.map((monster) => {
+    const boss = syncRuntimeBossFromDb(sessionId, {
+      id: monster.id,
+      directionId: monster.directionId || '',
+      monsterKey: monster.monsterKey,
+      monsterName: monster.monsterName || null,
+      monsterLevel: monster.monsterLevel,
+      imagePath: monster.imagePath || null,
+      waveIndex: monster.waveIndex,
+      laneIndex: monster.laneIndex ?? 0,
+      hp: monster.hp,
+      maxHp: monster.maxHp,
+      attack: monster.attack,
+      status: monster.status,
+      routeProgress: monster.routeProgress,
+      spawnedAt: monster.spawnedAt,
+    })
+    if (!boss) {
+      return monster
+    }
+
+    return {
+      ...monster,
+      hp: boss.hp,
+      maxHp: boss.maxHp,
+      status: getDbMonsterStatusForRuntimeBoss(boss.status),
+      routeProgress: boss.routeProgress,
+      lockedByStudentId: null,
+      lockExpiresAt: null,
+    }
+  })
+}
+
+function buildWaveBossMonster(wave: ClassDefenseConfig['waves'][number]) {
+  const [firstMonster] = wave.monsters
+  if (!firstMonster) {
+    return null
+  }
+
+  return {
+    ...firstMonster,
+    hp: wave.monsters.reduce((sum, monster) => sum + monster.hp, 0),
+    attack: Math.max(...wave.monsters.map((monster) => monster.attack)),
+    speed: Math.min(...wave.monsters.map((monster) => monster.speed)),
+    spawnDelaySeconds: Math.min(...wave.monsters.map((monster) => monster.spawnDelaySeconds)),
+  }
+}
+
 async function createScheduledMonsters(
   tx: Tx,
   sessionId: string,
@@ -556,11 +1159,11 @@ async function createScheduledMonsters(
 ) {
   const monsters = config.enabledDirections.flatMap((directionId) =>
     config.waves.flatMap((wave) =>
-      wave.monsters.map((monster, laneIndex) => ({
+      [buildWaveBossMonster(wave)].flatMap((monster) => monster ? [{
         sessionId,
         directionId,
         waveIndex: wave.waveIndex,
-        laneIndex,
+        laneIndex: 0,
         monsterKey: monster.monsterKey,
         monsterName: monster.monsterName,
         monsterLevel: monster.monsterLevel,
@@ -572,7 +1175,7 @@ async function createScheduledMonsters(
         speed: monster.speed,
         routeProgress: 0,
         spawnedAt: addSeconds(startedAt, wave.startDelaySeconds + monster.spawnDelaySeconds),
-      }))
+      }] : [])
     )
   )
 
@@ -741,7 +1344,7 @@ export async function applyTeacherClassDefenseAction(
 }
 
 export async function endClassDefenseSession(sessionId: string, reason: string) {
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const updated = await tx.classDefenseSession.update({
       where: { id: sessionId },
       data: {
@@ -768,6 +1371,8 @@ export async function endClassDefenseSession(sessionId: string, reason: string) 
     })
     return updated
   })
+  bossRoomRuntimeBySessionId.delete(sessionId)
+  return updated
 }
 
 export async function getActiveClassDefenseSessionForStudent(student: {
@@ -980,11 +1585,17 @@ export async function getClassDefenseSnapshot(
     },
   })
   const studentMap = new Map(students.map((student) => [student.id, student] as const))
+  const runtimeRoom = bossRoomRuntimeBySessionId.get(sessionId)
   const participantViews = participants.map((participant) => {
     const currentStudent = studentMap.get(participant.studentId)
+    const runtimeParticipant = runtimeRoom?.participantByStudentId.get(participant.studentId) || null
 
     return {
       ...participant,
+      hp: runtimeParticipant?.hp ?? participant.hp,
+      maxHp: runtimeParticipant?.maxHp ?? participant.maxHp,
+      status: runtimeParticipant?.status ?? participant.status,
+      reviveAt: runtimeParticipant?.reviveAt ?? participant.reviveAt,
       student: currentStudent
         ? {
             id: currentStudent.id,
@@ -996,6 +1607,14 @@ export async function getClassDefenseSnapshot(
       pet: buildPetView(currentStudent?.pet || null),
     }
   })
+  const monsterViews = applyBossRuntimeToMonsterViews(sessionId, withLaneIndexes(monsters))
+  const bosses = await buildBossViews(sessionId, monsterViews, studentId)
+  const directionBosses = Object.fromEntries(
+    bosses.map((boss) => [boss.directionId, boss])
+  )
+  const primaryBoss = directionId
+    ? bosses.find((boss) => boss.directionId === directionId) || null
+    : bosses[0] || null
 
   return {
     serverTime: new Date().toISOString(),
@@ -1005,7 +1624,10 @@ export async function getClassDefenseSnapshot(
     },
     directions,
     participants: participantViews,
-    monsters: withLaneIndexes(monsters),
+    monsters: monsterViews,
+    bosses,
+    boss: primaryBoss,
+    directionBosses,
     activeCombat,
   }
 }
@@ -1014,7 +1636,7 @@ async function getClassDefenseDirectionSummaries(
   sessionId: string,
   enabledDirections: ClassDefenseDirectionId[]
 ) {
-  const [monsters, participants] = await Promise.all([
+  const [monsters, participants, activeBosses] = await Promise.all([
     prisma.classDefenseMonster.groupBy({
       by: ['directionId'],
       where: {
@@ -1042,21 +1664,84 @@ async function getClassDefenseDirectionSummaries(
         _all: true,
       },
     }),
+    prisma.classDefenseMonster.findMany({
+      where: {
+        sessionId,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
+        },
+      },
+      orderBy: [
+        { directionId: 'asc' },
+        { waveIndex: 'asc' },
+        { spawnedAt: 'asc' },
+        { id: 'asc' },
+      ],
+      select: {
+        id: true,
+        directionId: true,
+        waveIndex: true,
+        laneIndex: true,
+        monsterKey: true,
+        monsterName: true,
+        monsterLevel: true,
+        imagePath: true,
+        status: true,
+        hp: true,
+        maxHp: true,
+        attack: true,
+        routeProgress: true,
+        spawnedAt: true,
+      },
+    }),
   ])
 
   const monsterCountByDirection = new Map(monsters.map((item) => [item.directionId, item._count._all]))
   const defenderCountByDirection = new Map(
     participants.map((item) => [item.directionId || '', item._count._all])
   )
+  const bossByDirection = new Map<ClassDefenseDirectionId, typeof activeBosses[number]>()
+  for (const boss of activeBosses) {
+    if (isClassDefenseDirectionId(boss.directionId) && !bossByDirection.has(boss.directionId)) {
+      syncRuntimeBossFromDb(sessionId, boss)
+      bossByDirection.set(boss.directionId, boss)
+    }
+  }
 
   return CLASS_DEFENSE_DIRECTIONS.map((direction) => {
     const enabled = enabledDirections.includes(direction.id)
+    const boss = enabled ? bossByDirection.get(direction.id) || null : null
+    const runtimeBoss = boss ? getBossRoomRuntime(sessionId).bosses.get(boss.id) || null : null
 
     return {
       directionId: direction.id,
       label: direction.label,
       enabled,
       monsterCount: enabled ? monsterCountByDirection.get(direction.id) || 0 : 0,
+      bossCount: boss ? 1 : 0,
+      bossHp: runtimeBoss?.hp ?? boss?.hp ?? 0,
+      bossMaxHp: runtimeBoss?.maxHp ?? boss?.maxHp ?? 0,
+      boss: boss
+        ? {
+            id: boss.id,
+            bossId: boss.id,
+            directionId: boss.directionId,
+            bossKey: runtimeBoss?.monsterKey || boss.monsterKey,
+            bossName: runtimeBoss?.monsterName || boss.monsterName || 'Boss',
+            imagePath: runtimeBoss?.imagePath || boss.imagePath || undefined,
+            phase: 1,
+            status: runtimeBoss?.status === 'DEFEATED'
+              ? 'DEFEATED'
+              : runtimeBoss?.status === 'ESCAPED'
+                ? 'ESCAPED'
+                : getBossStatus(boss.status),
+            hp: runtimeBoss?.hp ?? boss.hp,
+            maxHp: runtimeBoss?.maxHp ?? boss.maxHp,
+          }
+        : null,
       defenderCount: enabled ? defenderCountByDirection.get(direction.id) || 0 : 0,
     }
   })
@@ -1174,15 +1859,7 @@ export async function startClassDefenseCombat(input: {
   }
 
   const config = parseClassDefenseConfig(session.configJson)
-  const questions = await prisma.paperQuestion.findMany({
-    where: {
-      paperId: session.paperId,
-    },
-    orderBy: { orderIndex: 'asc' },
-  })
-  if (questions.length === 0) {
-    throw new Error('题库为空，无法进入战斗')
-  }
+  const paperId = session.paperId
 
   const combatStarted = await prisma.$transaction(async (tx) => {
     const participant = await tx.classDefenseParticipant.findUnique({
@@ -1240,7 +1917,7 @@ export async function startClassDefenseCombat(input: {
       throw new Error('怪物已被其他同学锁定或不可攻击')
     }
 
-    const question = pickQuestionForWave(questions, config, targetMonster.waveIndex)
+    const question = await pickQuestionForWaveFromDb(tx, paperId, config, targetMonster.waveIndex)
     if (!question) {
       throw new Error('题库为空，无法进入战斗')
     }
@@ -1275,26 +1952,28 @@ export async function startClassDefenseCombat(input: {
       },
     })
 
-    await appendEvent(tx, {
-      sessionId: input.sessionId,
-      type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_LOCKED,
-      payload: {
-        monsterId: input.monsterId,
-        studentId: input.studentId,
-        combatId: created.id,
-        lockExpiresAt: addSeconds(now, config.combatSeconds).toISOString(),
+    await appendEvents(tx, [
+      {
+        sessionId: input.sessionId,
+        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_LOCKED,
+        payload: {
+          monsterId: input.monsterId,
+          studentId: input.studentId,
+          combatId: created.id,
+          lockExpiresAt: addSeconds(now, config.combatSeconds).toISOString(),
+        },
       },
-    })
-    await appendEvent(tx, {
-      sessionId: input.sessionId,
-      type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_STARTED,
-      payload: {
-        combatId: created.id,
-        monsterId: input.monsterId,
-        studentId: input.studentId,
-        questionId: question.id,
+      {
+        sessionId: input.sessionId,
+        type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_STARTED,
+        payload: {
+          combatId: created.id,
+          monsterId: input.monsterId,
+          studentId: input.studentId,
+          questionId: question.id,
+        },
       },
-    })
+    ])
 
     return {
       combat: created,
@@ -1308,7 +1987,357 @@ export async function startClassDefenseCombat(input: {
   }
 }
 
-async function resolveClassDefenseCombatAnswer(
+export async function startClassDefenseBossCombat(input: {
+  sessionId: string
+  studentId: string
+  bossId: string
+  directionId?: string | null
+}) {
+  const now = new Date()
+  const session = await prisma.classDefenseSession.findFirst({
+    where: {
+      id: input.sessionId,
+      status: CLASS_DEFENSE_SESSION_STATUS.ACTIVE,
+    },
+  })
+
+  if (!session) {
+    throw new Error('守护班级未开始或已结束')
+  }
+
+  if (!session.paperId) {
+    throw new Error('本局游戏没有绑定题库试卷')
+  }
+
+  const config = parseClassDefenseConfig(session.configJson)
+  const paperId = session.paperId
+  const [participant, targetBoss, activeDbCombatCount] = await Promise.all([
+    prisma.classDefenseParticipant.findUnique({
+      where: {
+        sessionId_studentId: {
+          sessionId: input.sessionId,
+          studentId: input.studentId,
+        },
+      },
+    }),
+    prisma.classDefenseMonster.findFirst({
+      where: {
+        id: input.bossId,
+        sessionId: input.sessionId,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
+        },
+      },
+    }),
+    prisma.classDefenseCombat.count({
+      where: {
+        sessionId: input.sessionId,
+        studentId: input.studentId,
+        status: CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
+      },
+    }),
+  ])
+
+  if (!participant) {
+    throw new Error('请先进入守护班级')
+  }
+
+  if (!participant.directionId) {
+    throw new Error('请先选择防守方向')
+  }
+
+  const requestedDirectionId = input.directionId
+    ? requireClassDefenseDirectionId(input.directionId)
+    : participant.directionId
+  if (requestedDirectionId !== participant.directionId) {
+    throw new Error('只能攻击当前防守方向的 Boss')
+  }
+
+  if (!targetBoss || targetBoss.directionId !== participant.directionId) {
+    throw new Error('Boss 不存在或不可攻击')
+  }
+
+  const room = getBossRoomRuntime(input.sessionId)
+  const battleStats = await prisma.$transaction((tx) => getStudentBattleStats(tx, input.studentId, config))
+  const runtimeParticipant = getRuntimeParticipant(room, input.studentId, participant, battleStats, now)
+  if (
+    runtimeParticipant.status !== 'ALIVE' ||
+    (runtimeParticipant.reviveAt && runtimeParticipant.reviveAt > now)
+  ) {
+    throw new Error('你正在等待复活')
+  }
+
+  const activeRuntimeCombatCount = Array.from(room.activeCombats.values())
+    .filter((combat) =>
+      combat.studentId === input.studentId &&
+      combat.expiresAt > now
+    ).length
+  if (activeDbCombatCount > 0 || activeRuntimeCombatCount > 0) {
+    throw new Error('你已经在战斗中')
+  }
+
+  const boss = syncRuntimeBossFromDb(input.sessionId, targetBoss)
+  if (!boss || boss.status !== 'ACTIVE' || boss.hp <= 0 || boss.settlementStarted) {
+    throw new Error('Boss 不存在或不可攻击')
+  }
+
+  const question = await pickBossQuestionForWave(input.sessionId, paperId, config, targetBoss.waveIndex)
+  if (!question) {
+    throw new Error('题库为空，无法进入战斗')
+  }
+
+  const combat: ClassDefenseBossCombatRuntimeState = {
+    id: `boss-combat-${randomUUID()}`,
+    sessionId: input.sessionId,
+    bossId: boss.id,
+    studentId: input.studentId,
+    directionId: boss.directionId,
+    question,
+    waveIndex: boss.waveIndex,
+    startedAt: now,
+    expiresAt: addSeconds(now, config.combatSeconds),
+  }
+  room.activeCombats.set(combat.id, combat)
+
+  return {
+    combat: {
+      id: combat.id,
+      sessionId: combat.sessionId,
+      bossId: combat.bossId,
+      monsterId: combat.bossId,
+      studentId: combat.studentId,
+      isBoss: true,
+      expiresAt: combat.expiresAt,
+    },
+    question: publicQuestion(question),
+  }
+}
+
+async function resolveClassDefenseBossRuntimeAnswer(input: {
+  combatId: string
+  studentId: string
+  answer: string
+  now: Date
+  forceIncorrect?: boolean
+}): Promise<ClassDefenseCombatResult | null> {
+  let matchedRoom: ClassDefenseBossRoomRuntimeState | null = null
+  let combat: ClassDefenseBossCombatRuntimeState | null = null
+
+  for (const room of Array.from(bossRoomRuntimeBySessionId.values())) {
+    const current = room.activeCombats.get(input.combatId)
+    if (current) {
+      matchedRoom = room
+      combat = current
+      break
+    }
+  }
+
+  if (!matchedRoom || !combat) {
+    return null
+  }
+
+  if (combat.studentId !== input.studentId) {
+    throw new Error('战斗不存在或已结束')
+  }
+
+  matchedRoom.activeCombats.delete(combat.id)
+  const now = input.now
+  const [session, participant] = await Promise.all([
+    prisma.classDefenseSession.findFirst({
+      where: {
+        id: combat.sessionId,
+        status: CLASS_DEFENSE_SESSION_STATUS.ACTIVE,
+      },
+    }),
+    prisma.classDefenseParticipant.findUnique({
+      where: {
+        sessionId_studentId: {
+          sessionId: combat.sessionId,
+          studentId: combat.studentId,
+        },
+      },
+    }),
+  ])
+
+  if (!session) {
+    throw new Error('守护班级未开始或已结束')
+  }
+  if (!participant) {
+    throw new Error('参战学生不存在')
+  }
+
+  const config = parseClassDefenseConfig(session.configJson)
+  const boss = matchedRoom.bosses.get(combat.bossId)
+  if (!boss) {
+    throw new Error('Boss 不存在或不可攻击')
+  }
+
+  const battleStats = await prisma.$transaction((tx) => getStudentBattleStats(tx, combat.studentId, config))
+  const runtimeParticipant = getRuntimeParticipant(
+    matchedRoom,
+    combat.studentId,
+    participant,
+    battleStats,
+    now
+  )
+  const isCorrect = input.forceIncorrect || combat.expiresAt <= now
+    ? false
+    : evaluateQuestionAnswer(combat.question, input.answer)
+  const isCritical = isCorrect && rollPercent(battleStats.critRate)
+  const isDodged = !isCorrect && rollPercent(battleStats.dodgeRate)
+  const attemptedDamageToBoss = isCorrect && boss.status === 'ACTIVE' && boss.hp > 0
+    ? Math.max(1, Math.round(battleStats.attack * (isCritical ? 2 : 1)))
+    : 0
+  const damageToBoss = Math.min(boss.hp, attemptedDamageToBoss)
+
+  if (damageToBoss > 0) {
+    boss.hp = Math.max(0, boss.hp - damageToBoss)
+    boss.contributionByStudentId.set(
+      combat.studentId,
+      (boss.contributionByStudentId.get(combat.studentId) || 0) + damageToBoss
+    )
+  }
+
+  const damageToStudent = isCorrect || isDodged
+    ? 0
+    : calculateDamageAfterDefense(boss.attack, battleStats.defense)
+  if (damageToStudent > 0 && runtimeParticipant.status === 'ALIVE') {
+    runtimeParticipant.hp = Math.max(0, runtimeParticipant.hp - damageToStudent)
+    if (runtimeParticipant.hp <= 0) {
+      runtimeParticipant.status = 'DOWN'
+      runtimeParticipant.reviveAt = addSeconds(now, config.reviveSeconds)
+    }
+  }
+
+  let bossDefeatedNow = false
+  let rewards: ClassDefenseBossReward[] = []
+  if (boss.hp <= 0 && boss.status !== 'DEFEATED') {
+    boss.hp = 0
+    boss.status = 'DEFEATED'
+  }
+  if (boss.status === 'DEFEATED' && !boss.settlementStarted) {
+    boss.settlementStarted = true
+    const contributionSnapshot = new Map(boss.contributionByStudentId)
+    rewards = await prisma.$transaction(async (tx) => {
+      const killed = await tx.classDefenseMonster.updateMany({
+        where: {
+          id: boss.id,
+          sessionId: combat.sessionId,
+          status: {
+            in: [
+              CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+              CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+            ],
+          },
+        },
+        data: {
+          hp: 0,
+          status: CLASS_DEFENSE_MONSTER_STATUS.KILLED,
+          lockedByStudentId: null,
+          lockExpiresAt: null,
+          killedAt: now,
+        },
+      })
+
+      if (killed.count !== 1) {
+        return []
+      }
+
+      bossDefeatedNow = true
+      const settledRewards = await settleBossRewardsWithTx(tx, {
+        sessionId: combat.sessionId,
+        monsterId: boss.id,
+        bossName: boss.monsterName,
+        basePointReward: config.killPointReward,
+        occurredAt: now,
+        contributionByStudentId: contributionSnapshot,
+      })
+      await appendEvent(tx, {
+        sessionId: combat.sessionId,
+        type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_KILLED,
+        payload: {
+          bossId: boss.id,
+          monsterId: boss.id,
+          isBoss: true,
+          rewards: settledRewards,
+          contributions: Array.from(contributionSnapshot.entries()).map(([studentId, damage]) => ({
+            studentId,
+            damage,
+          })),
+        },
+      })
+
+      return settledRewards
+    })
+  }
+
+  const totalDamage = getBossTotalDamage(boss)
+  const myDamage = boss.contributionByStudentId.get(combat.studentId) || 0
+  const reviveAt = runtimeParticipant.reviveAt
+
+  return {
+    combatId: combat.id,
+    sessionId: combat.sessionId,
+    bossId: boss.id,
+    monsterId: boss.id,
+    directionId: boss.directionId,
+    studentId: combat.studentId,
+    roundIndex: 1,
+    isBoss: true,
+    isCorrect,
+    damageToBoss,
+    damageToMonster: damageToBoss,
+    damageToStudent,
+    isCritical,
+    isDodged,
+    battleStats,
+    bossHp: boss.hp,
+    bossMaxHp: boss.maxHp,
+    myDamage,
+    totalDamage,
+    bossDefeated: boss.status === 'DEFEATED',
+    bossDefeatedNow,
+    monsterHp: boss.hp,
+    monsterKilled: boss.status === 'DEFEATED',
+    studentHp: runtimeParticipant.hp,
+    studentDown: runtimeParticipant.status === 'DOWN',
+    battleEnded: true,
+    nextQuestion: null,
+    reviveAt,
+    rewards,
+  }
+}
+
+async function resolveExpiredClassDefenseBossCombats(sessionId: string, now: Date) {
+  const room = bossRoomRuntimeBySessionId.get(sessionId)
+  if (!room) {
+    return []
+  }
+
+  const expiredCombats = Array.from(room.activeCombats.values())
+    .filter((combat) => combat.sessionId === sessionId && combat.expiresAt <= now)
+  const results: ClassDefenseCombatResult[] = []
+
+  for (const combat of expiredCombats) {
+    const result = await resolveClassDefenseBossRuntimeAnswer({
+      combatId: combat.id,
+      studentId: combat.studentId,
+      answer: '__TIMEOUT__',
+      now,
+      forceIncorrect: true,
+    })
+    if (result) {
+      results.push(result)
+    }
+  }
+
+  return results
+}
+
+async function resolveClassDefenseBossCombatAnswer(
   tx: Tx,
   input: {
     combat: ClassDefenseCombatWithSessionMonster
@@ -1328,19 +2357,299 @@ async function resolveClassDefenseCombatAnswer(
   }
 
   const config = parseClassDefenseConfig(combat.session.configJson)
+  const isCorrect = input.forceIncorrect
+    ? false
+    : evaluateQuestionAnswer(question, input.answer)
+
+  const participant = await tx.classDefenseParticipant.findUnique({
+    where: {
+      sessionId_studentId: {
+        sessionId: combat.sessionId,
+        studentId: combat.studentId,
+      },
+    },
+  })
+
+  if (!participant) {
+    throw new Error('参战学生不存在')
+  }
+
+  const battleStats = await getStudentBattleStats(tx, combat.studentId, config)
+  const isCritical = isCorrect && rollPercent(battleStats.critRate)
+  const isDodged = !isCorrect && rollPercent(battleStats.dodgeRate)
+  const attemptedDamageToBoss = isCorrect
+    ? Math.max(1, Math.round(battleStats.attack * (isCritical ? 2 : 1)))
+    : 0
+  const damageToStudent = isCorrect || isDodged
+    ? 0
+    : calculateDamageAfterDefense(combat.monster.attack, battleStats.defense)
+  const nextStudentHp = Math.max(0, participant.hp - damageToStudent)
+  const studentDown = nextStudentHp <= 0
+  const reviveAt = studentDown ? addSeconds(now, config.reviveSeconds) : null
+  const roundIndex = await tx.classDefenseAnswer.count({
+    where: {
+      combatId: combat.id,
+    },
+  }) + 1
+
+  await tx.classDefenseAnswer.create({
+    data: {
+      combatId: combat.id,
+      sessionId: combat.sessionId,
+      studentId: combat.studentId,
+      monsterId: combat.monsterId,
+      roundIndex,
+      paperQuestionId: combat.paperQuestionId,
+      answer: input.answer,
+      isCorrect,
+      submittedAt: now,
+    },
+  })
+
+  let damageToBoss = 0
+  let bossHp = Math.max(0, combat.monster.hp)
+  let bossDefeated = combat.monster.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED || bossHp <= 0
+  let bossDefeatedNow = false
+  let rewards: ClassDefenseBossReward[] = []
+
+  if (attemptedDamageToBoss > 0 && !bossDefeated) {
+    const damaged = await tx.classDefenseMonster.updateMany({
+      where: {
+        id: combat.monsterId,
+        sessionId: combat.sessionId,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
+        },
+        hp: {
+          gt: 0,
+        },
+      },
+      data: {
+        hp: {
+          decrement: attemptedDamageToBoss,
+        },
+        lockedByStudentId: null,
+        lockExpiresAt: null,
+      },
+    })
+    damageToBoss = damaged.count > 0 ? attemptedDamageToBoss : 0
+  }
+
+  const currentBoss = await tx.classDefenseMonster.findUnique({
+    where: { id: combat.monsterId },
+    select: {
+      hp: true,
+      maxHp: true,
+      status: true,
+      monsterName: true,
+    },
+  })
+
+  bossHp = Math.max(0, currentBoss?.hp ?? bossHp)
+  bossDefeated = bossDefeated ||
+    currentBoss?.status === CLASS_DEFENSE_MONSTER_STATUS.KILLED ||
+    bossHp <= 0
+
+  await tx.classDefenseCombat.update({
+    where: { id: combat.id },
+    data: {
+      status: CLASS_DEFENSE_COMBAT_STATUS.RESOLVED,
+      endedAt: now,
+      isCorrect,
+      damageToMonster: damageToBoss,
+      damageToStudent,
+    },
+  })
+
+  if (bossHp <= 0 && currentBoss?.status !== CLASS_DEFENSE_MONSTER_STATUS.KILLED) {
+    const killed = await tx.classDefenseMonster.updateMany({
+      where: {
+        id: combat.monsterId,
+        sessionId: combat.sessionId,
+        status: {
+          in: [
+            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+          ],
+        },
+      },
+      data: {
+        hp: 0,
+        status: CLASS_DEFENSE_MONSTER_STATUS.KILLED,
+        lockedByStudentId: null,
+        lockExpiresAt: null,
+        killedAt: now,
+      },
+    })
+    bossHp = 0
+    bossDefeated = true
+
+    if (killed.count === 1) {
+      bossDefeatedNow = true
+      const dbContributions = await getBossDamageTotalsWithTx(tx, combat.sessionId, combat.monsterId)
+      rewards = await settleBossRewardsWithTx(tx, {
+        sessionId: combat.sessionId,
+        monsterId: combat.monsterId,
+        bossName: currentBoss?.monsterName,
+        basePointReward: config.killPointReward,
+        occurredAt: now,
+        contributionByStudentId: dbContributions.byStudentId,
+      })
+    }
+  }
+
+  await tx.classDefenseParticipant.update({
+    where: {
+      sessionId_studentId: {
+        sessionId: combat.sessionId,
+        studentId: combat.studentId,
+      },
+    },
+    data: {
+      hp: nextStudentHp,
+      maxHp: battleStats.maxHp,
+      status: studentDown
+        ? CLASS_DEFENSE_PARTICIPANT_STATUS.DOWN
+        : CLASS_DEFENSE_PARTICIPANT_STATUS.ALIVE,
+      reviveAt,
+    },
+  })
+
+  const contributionViews = await getBossDamageTotalsWithTx(tx, combat.sessionId, combat.monsterId)
+  const myDamage = contributionViews.byStudentId.get(combat.studentId) || 0
+  const totalDamage = contributionViews.totalDamage
+  const directionId = isClassDefenseDirectionId(combat.monster.directionId)
+    ? combat.monster.directionId
+    : null
+  const resultPayload = {
+    combatId: combat.id,
+    roundIndex,
+    bossId: combat.monsterId,
+    monsterId: combat.monsterId,
+    directionId,
+    studentId: combat.studentId,
+    isBoss: true,
+    isCorrect,
+    damageToBoss,
+    damageToMonster: damageToBoss,
+    damageToStudent,
+    isCritical,
+    isDodged,
+    battleStats,
+    bossHp,
+    bossMaxHp: currentBoss?.maxHp ?? combat.monster.maxHp,
+    monsterHp: bossHp,
+    myDamage,
+    totalDamage,
+    bossDefeated,
+    bossDefeatedNow,
+    monsterKilled: bossDefeated,
+    studentHp: nextStudentHp,
+    studentDown,
+    battleEnded: true,
+    nextQuestion: null,
+    reviveAt: reviveAt?.toISOString() || null,
+    rewards,
+  }
+  const events: ClassDefenseEventInput[] = [
+    {
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_RESULT,
+      payload: resultPayload,
+    },
+  ]
+
+  if (bossDefeatedNow) {
+    events.push({
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_KILLED,
+      payload: {
+        bossId: combat.monsterId,
+        monsterId: combat.monsterId,
+        studentId: combat.studentId,
+        isBoss: true,
+        rewards,
+      },
+    })
+  }
+
+  if (studentDown) {
+    events.push({
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.STUDENT_DOWN,
+      payload: {
+        studentId: combat.studentId,
+        reviveAt: reviveAt?.toISOString() || null,
+      },
+    })
+  }
+
+  await appendEvents(tx, events)
+
+  return {
+    combatId: combat.id,
+    sessionId: combat.sessionId,
+    bossId: combat.monsterId,
+    monsterId: combat.monsterId,
+    directionId,
+    studentId: combat.studentId,
+    roundIndex,
+    isBoss: true,
+    isCorrect,
+    damageToBoss,
+    damageToMonster: damageToBoss,
+    damageToStudent,
+    isCritical,
+    isDodged,
+    battleStats,
+    bossHp,
+    bossMaxHp: currentBoss?.maxHp ?? combat.monster.maxHp,
+    myDamage,
+    totalDamage,
+    bossDefeated,
+    bossDefeatedNow,
+    monsterHp: bossHp,
+    monsterKilled: bossDefeated,
+    studentHp: nextStudentHp,
+    studentDown,
+    battleEnded: true,
+    nextQuestion: null,
+    reviveAt,
+    rewards,
+  }
+}
+
+async function resolveClassDefenseCombatAnswer(
+  tx: Tx,
+  input: {
+    combat: ClassDefenseCombatWithSessionMonster
+    answer: string
+    now: Date
+    forceIncorrect?: boolean
+  }
+): Promise<ClassDefenseCombatResult> {
+  const combat = input.combat
+  if (isBossCombatRecord(combat)) {
+    return resolveClassDefenseBossCombatAnswer(tx, input)
+  }
+
+  const now = input.now
+  const question = await tx.paperQuestion.findUnique({
+    where: { id: combat.paperQuestionId },
+  })
+
+  if (!question) {
+    throw new Error('题目不存在')
+  }
+
+  const config = parseClassDefenseConfig(combat.session.configJson)
   if (!combat.session.paperId) {
     throw new Error('本局游戏没有绑定题库试卷')
   }
-
-  const questions = await tx.paperQuestion.findMany({
-    where: {
-      paperId: combat.session.paperId,
-    },
-    orderBy: { orderIndex: 'asc' },
-  })
-  if (questions.length === 0) {
-    throw new Error('题库为空，无法继续战斗')
-  }
+  const paperId = combat.session.paperId
 
   const isCorrect = input.forceIncorrect
     ? false
@@ -1381,7 +2690,7 @@ async function resolveClassDefenseCombatAnswer(
   const battleEnded = monsterKilled || studentDown
   const nextQuestion = battleEnded
     ? null
-    : pickQuestionForWave(questions, config, combat.monster.waveIndex)
+    : await pickQuestionForWaveFromDb(tx, paperId, config, combat.monster.waveIndex)
 
   if (!battleEnded && !nextQuestion) {
     throw new Error('题库为空，无法继续战斗')
@@ -1458,30 +2767,32 @@ async function resolveClassDefenseCombatAnswer(
     })
   }
 
-  await appendEvent(tx, {
-    sessionId: combat.sessionId,
-    type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_RESULT,
-    payload: {
-      combatId: combat.id,
-      roundIndex,
-      monsterId: combat.monsterId,
-      studentId: combat.studentId,
-      isCorrect,
-      damageToMonster,
-      damageToStudent,
-      isCritical,
-      isDodged,
-      battleStats,
-      monsterHp: nextMonsterHp,
-      studentHp: nextStudentHp,
-      battleEnded,
-      nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
-      reviveAt: reviveAt?.toISOString() || null,
+  const events: ClassDefenseEventInput[] = [
+    {
+      sessionId: combat.sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.COMBAT_RESULT,
+      payload: {
+        combatId: combat.id,
+        roundIndex,
+        monsterId: combat.monsterId,
+        studentId: combat.studentId,
+        isCorrect,
+        damageToMonster,
+        damageToStudent,
+        isCritical,
+        isDodged,
+        battleStats,
+        monsterHp: nextMonsterHp,
+        studentHp: nextStudentHp,
+        battleEnded,
+        nextQuestion: nextQuestion ? publicQuestion(nextQuestion) : null,
+        reviveAt: reviveAt?.toISOString() || null,
+      },
     },
-  })
+  ]
 
   if (monsterKilled) {
-    await appendEvent(tx, {
+    events.push({
       sessionId: combat.sessionId,
       type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_KILLED,
       payload: {
@@ -1490,7 +2801,7 @@ async function resolveClassDefenseCombatAnswer(
       },
     })
   } else if (studentDown) {
-    await appendEvent(tx, {
+    events.push({
       sessionId: combat.sessionId,
       type: CLASS_DEFENSE_EVENT_TYPE.MONSTER_RELEASED,
       payload: {
@@ -1501,7 +2812,7 @@ async function resolveClassDefenseCombatAnswer(
   }
 
   if (studentDown) {
-    await appendEvent(tx, {
+    events.push({
       sessionId: combat.sessionId,
       type: CLASS_DEFENSE_EVENT_TYPE.STUDENT_DOWN,
       payload: {
@@ -1510,6 +2821,8 @@ async function resolveClassDefenseCombatAnswer(
       },
     })
   }
+
+  await appendEvents(tx, events)
 
   return {
     combatId: combat.id,
@@ -1542,6 +2855,16 @@ export async function submitClassDefenseAnswer(input: {
   answer: string
 }) {
   const now = new Date()
+  const bossResult = await resolveClassDefenseBossRuntimeAnswer({
+    combatId: input.combatId,
+    studentId: input.studentId,
+    answer: input.answer,
+    now,
+    forceIncorrect: input.answer === '__TIMEOUT__',
+  })
+  if (bossResult) {
+    return bossResult
+  }
 
   return prisma.$transaction(async (tx) => {
     const combat = await tx.classDefenseCombat.findFirst({
@@ -1804,6 +3127,7 @@ async function activateNextClassDefenseWaveIfReady(
 
 export async function tickClassDefenseSession(sessionId: string) {
   const now = new Date()
+  const expiredBossCombatResults = await resolveExpiredClassDefenseBossCombats(sessionId, now)
 
   const tickResult = await prisma.$transaction(async (tx) => {
     const session = await tx.classDefenseSession.findUnique({
@@ -1924,6 +3248,26 @@ export async function tickClassDefenseSession(sessionId: string) {
             reachedAt: now,
           },
         })
+        const runtimeRoom = bossRoomRuntimeBySessionId.get(sessionId)
+        const runtimeBoss = runtimeRoom?.bosses.get(monster.id)
+        if (runtimeBoss) {
+          runtimeBoss.status = 'ESCAPED'
+          runtimeBoss.routeProgress = 1
+          runtimeBoss.settlementStarted = true
+        }
+        const activeRuntimeCombatsForBoss = runtimeRoom
+          ? Array.from(runtimeRoom.activeCombats.values()).filter((combat) => combat.bossId === monster.id)
+          : []
+        for (const combat of activeRuntimeCombatsForBoss) {
+          runtimeRoom?.activeCombats.delete(combat.id)
+          combatCancellations.push({
+            combatId: combat.id,
+            sessionId: combat.sessionId,
+            monsterId: combat.bossId,
+            studentId: combat.studentId,
+            reason: 'BOSS_REACHED',
+          })
+        }
         if (activeCombatsForMonster.length > 0) {
           await tx.classDefenseCombat.updateMany({
             where: {
@@ -2047,9 +3391,14 @@ export async function tickClassDefenseSession(sessionId: string) {
     return null
   }
 
+  const summary = await getClassDefenseDirectionSummary(sessionId)
+  if (summary.session.status !== CLASS_DEFENSE_SESSION_STATUS.ACTIVE) {
+    bossRoomRuntimeBySessionId.delete(sessionId)
+  }
+
   return {
-    summary: await getClassDefenseDirectionSummary(sessionId),
-    combatResults: tickResult.combatResults,
+    summary,
+    combatResults: [...expiredBossCombatResults, ...tickResult.combatResults],
     combatCancellations: tickResult.combatCancellations,
     reachedMonsters: tickResult.reachedMonsters,
   }
