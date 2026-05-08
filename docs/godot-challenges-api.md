@@ -10,6 +10,8 @@
 
 服务端不会执行学生 Python，也不会把标准答案下发给 Godot。
 
+代码闯关不再支持网页端或 Godot 内嵌 WebView 访问。旧的 `/api/godot/auth/login`、`/api/godot/auth/exchange` 和 `/student/challenges` 页面入口已停用；Godot 必须使用本文档中的原生 Bearer API。
+
 ## 1. 鉴权
 
 除登录接口外，所有接口都需要请求头：

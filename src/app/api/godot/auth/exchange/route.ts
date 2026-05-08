@@ -1,10 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import {
-  clearNextAuthSessionCookies,
-  consumeGodotSessionBootstrap,
-  issueNextAuthSessionCookie,
-} from '@/lib/godot-auth'
-import { SESSION_CLIENT_TYPES } from '@/lib/session-client'
+import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 
@@ -42,30 +36,9 @@ function buildExchangeErrorResponse(message: string, status: number) {
   )
 }
 
-export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get('code')?.trim() || ''
-
-  if (!code) {
-    return buildExchangeErrorResponse('缺少会话交换码，请返回 Godot 重新登录。', 400)
-  }
-
-  const bootstrap = await consumeGodotSessionBootstrap(code)
-  if (!bootstrap) {
-    return buildExchangeErrorResponse('会话交换码无效或已过期，请返回 Godot 重新登录。', 400)
-  }
-
-  const redirectUrl = new URL(bootstrap.targetPath, request.nextUrl.origin)
-  const response = NextResponse.redirect(redirectUrl)
-
-  clearNextAuthSessionCookies(response)
-  await issueNextAuthSessionCookie(response, {
-    id: bootstrap.user.id,
-    name: bootstrap.user.name,
-    username: bootstrap.user.username,
-    role: bootstrap.user.role,
-    clientType: SESSION_CLIENT_TYPES.GODOT,
-    origin: request.nextUrl.origin,
-  })
-
-  return response
+export async function GET() {
+  return buildExchangeErrorResponse(
+    'Godot WebView 访问代码闯关已停用，请在 Godot 原生客户端中登录并进入代码闯关。',
+    410
+  )
 }

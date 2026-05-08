@@ -1,11 +1,9 @@
 import Link from 'next/link'
-import { APP_SETTING_KEYS, getBooleanAppSetting } from '@/lib/app-settings'
 import { requireTeacher } from '@/lib/auth'
 import {
   getTeacherChallengeTaskListData,
   listChallengeClassOptions,
 } from '@/lib/challenges/service'
-import StudentChallengeNavToggle from './StudentChallengeNavToggle'
 
 interface Props {
   searchParams: Promise<{ className?: string }>
@@ -14,10 +12,6 @@ interface Props {
 export default async function TeacherChallengesPage({ searchParams }: Props) {
   await requireTeacher()
   const { className } = await searchParams
-  const studentChallengeNavVisible = await getBooleanAppSetting(
-    APP_SETTING_KEYS.studentChallengesNavVisible,
-    true
-  )
   const classOptions = await listChallengeClassOptions()
   const selectedClassName = className?.trim() || classOptions[0] || ''
 
@@ -26,9 +20,6 @@ export default async function TeacherChallengesPage({ searchParams }: Props) {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-3xl font-bold text-slate-900">代码闯关</h1>
         <p className="mt-3 text-sm text-slate-600">当前还没有学生班级数据，无法配置闯关任务。</p>
-        <div className="mt-6">
-          <StudentChallengeNavToggle initialVisible={studentChallengeNavVisible} />
-        </div>
       </div>
     )
   }
@@ -47,10 +38,6 @@ export default async function TeacherChallengesPage({ searchParams }: Props) {
         <Link href="/teacher" className="text-sm text-blue-600 hover:underline">
           返回教师首页
         </Link>
-      </div>
-
-      <div className="mb-6">
-        <StudentChallengeNavToggle initialVisible={studentChallengeNavVisible} />
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
