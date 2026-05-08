@@ -99,6 +99,13 @@ interface ClassDefenseReachedMonster {
   classHpChanged: boolean
 }
 
+type ClassDefenseSessionEndResult = 'VICTORY' | 'FAILURE'
+
+interface ClassDefenseSessionEndState {
+  result: ClassDefenseSessionEndResult
+  reason: string
+}
+
 interface ClassDefenseEventInput {
   sessionId: string
   type: string
@@ -123,6 +130,17 @@ interface ClassDefenseQuestionRecord {
   optionC: string | null
   optionD: string | null
 }
+
+const CLASS_DEFENSE_SESSION_END_REASONS = {
+  ALL_MONSTERS_ENDED: 'ALL_MONSTERS_ENDED',
+  CLASS_HP_ZERO: 'CLASS_HP_ZERO',
+} as const
+
+const CLASS_DEFENSE_SESSION_BLOCKING_MONSTER_STATUSES = [
+  CLASS_DEFENSE_MONSTER_STATUS.WAITING,
+  CLASS_DEFENSE_MONSTER_STATUS.WALKING,
+  CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
+] as const
 
 interface ClassDefenseBossRuntimeState {
   id: string
@@ -228,6 +246,87 @@ function publicQuestion(question: {
     type: question.type,
     score: question.score,
     options: getQuestionOptionEntries(question),
+  }
+}
+
+function normalizeSessionEndReason(reason: unknown) {
+  const value = String(reason ?? '').trim()
+  if (value === 'ALL_MONSTERS_CLEARED') {
+    return CLASS_DEFENSE_SESSION_END_REASONS.ALL_MONSTERS_ENDED
+  }
+  return value || null
+}
+
+function getSessionEndResult(reason: string | null): ClassDefenseSessionEndResult | null {
+  if (reason === CLASS_DEFENSE_SESSION_END_REASONS.CLASS_HP_ZERO) {
+    return 'FAILURE'
+  }
+  if (reason === CLASS_DEFENSE_SESSION_END_REASONS.ALL_MONSTERS_ENDED) {
+    return 'VICTORY'
+  }
+  return null
+}
+
+function getSessionEndStateFromReason(reason: unknown) {
+  const normalizedReason = normalizeSessionEndReason(reason)
+  const result = getSessionEndResult(normalizedReason)
+  return result && normalizedReason
+    ? { result, reason: normalizedReason }
+    : { result: null, reason: normalizedReason }
+}
+
+function getSessionEndEventReason(payload: unknown) {
+  const parsed = typeof payload === 'string'
+    ? (() => {
+        try {
+          return JSON.parse(payload) as unknown
+        } catch {
+          return null
+        }
+      })()
+    : payload
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null
+  }
+
+  return (parsed as { reason?: unknown }).reason ?? null
+}
+
+async function getLatestClassDefenseSessionEndState(sessionId: string) {
+  const event = await prisma.classDefenseEvent.findFirst({
+    where: {
+      sessionId,
+      type: CLASS_DEFENSE_EVENT_TYPE.SESSION_ENDED,
+    },
+    orderBy: {
+      stateVersion: 'desc',
+    },
+    select: {
+      payload: true,
+    },
+  })
+
+  return getSessionEndStateFromReason(
+    event ? getSessionEndEventReason(event.payload) : null
+  )
+}
+
+function buildClassDefenseSessionView<T extends {
+  id: string
+  status: string
+  classHp: number
+  maxClassHp: number
+}>(
+  session: T,
+  endState: Awaited<ReturnType<typeof getLatestClassDefenseSessionEndState>>,
+  enabledDirections: ClassDefenseDirectionId[]
+) {
+  return {
+    ...session,
+    result: session.status === CLASS_DEFENSE_SESSION_STATUS.ENDED ? endState.result : null,
+    reason: session.status === CLASS_DEFENSE_SESSION_STATUS.ENDED ? endState.reason : null,
+    enabledDirections,
   }
 }
 
@@ -424,6 +523,78 @@ async function appendEvents(tx: Tx, inputs: ClassDefenseEventInput[]) {
       stateVersion: firstStateVersion + index,
     })),
   })
+}
+
+async function finalizeClassDefenseSessionIfEndedWithTx(
+  tx: Tx,
+  sessionId: string,
+  now: Date
+): Promise<ClassDefenseSessionEndState | null> {
+  const session = await tx.classDefenseSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      status: true,
+      classHp: true,
+    },
+  })
+
+  if (!session || session.status !== CLASS_DEFENSE_SESSION_STATUS.ACTIVE) {
+    return null
+  }
+
+  let endState: ClassDefenseSessionEndState | null = null
+  if (session.classHp <= 0) {
+    endState = {
+      result: 'FAILURE',
+      reason: CLASS_DEFENSE_SESSION_END_REASONS.CLASS_HP_ZERO,
+    }
+  } else {
+    const blockingMonsterCount = await tx.classDefenseMonster.count({
+      where: {
+        sessionId,
+        status: {
+          in: [...CLASS_DEFENSE_SESSION_BLOCKING_MONSTER_STATUSES],
+        },
+      },
+    })
+
+    if (blockingMonsterCount === 0) {
+      endState = {
+        result: 'VICTORY',
+        reason: CLASS_DEFENSE_SESSION_END_REASONS.ALL_MONSTERS_ENDED,
+      }
+    }
+  }
+
+  if (!endState) {
+    return null
+  }
+
+  await tx.classDefenseSession.update({
+    where: { id: sessionId },
+    data: {
+      status: CLASS_DEFENSE_SESSION_STATUS.ENDED,
+      endedAt: now,
+    },
+  })
+  await tx.classDefenseCombat.updateMany({
+    where: {
+      sessionId,
+      status: CLASS_DEFENSE_COMBAT_STATUS.ACTIVE,
+    },
+    data: {
+      status: CLASS_DEFENSE_COMBAT_STATUS.CANCELLED,
+      endedAt: now,
+    },
+  })
+  await appendEvent(tx, {
+    sessionId,
+    type: CLASS_DEFENSE_EVENT_TYPE.SESSION_ENDED,
+    payload: endState,
+  })
+
+  return endState
 }
 
 async function pickQuestionForWaveFromDb(
@@ -1375,6 +1546,27 @@ export async function endClassDefenseSession(sessionId: string, reason: string) 
   return updated
 }
 
+export async function settleClassDefenseSessionEnd(sessionId: string) {
+  const now = new Date()
+  const sessionEnd = await prisma.$transaction((tx) =>
+    finalizeClassDefenseSessionIfEndedWithTx(tx, sessionId, now)
+  )
+
+  if (!sessionEnd) {
+    return null
+  }
+
+  const summary = await getClassDefenseDirectionSummary(sessionId)
+  if (summary.session.status !== CLASS_DEFENSE_SESSION_STATUS.ACTIVE) {
+    bossRoomRuntimeBySessionId.delete(sessionId)
+  }
+
+  return {
+    summary,
+    sessionEnd,
+  }
+}
+
 export async function getActiveClassDefenseSessionForStudent(student: {
   id: string
   className?: string | null
@@ -1532,7 +1724,7 @@ export async function getClassDefenseSnapshot(
         }
       : null
 
-  const [participants, monsters, activeCombat, directions] = await Promise.all([
+  const [participants, monsters, activeCombat, directions, endState] = await Promise.all([
     participantWhere
       ? prisma.classDefenseParticipant.findMany({
           where: participantWhere,
@@ -1562,6 +1754,7 @@ export async function getClassDefenseSnapshot(
         })
       : null,
     getClassDefenseDirectionSummaries(sessionId, config.enabledDirections),
+    getLatestClassDefenseSessionEndState(sessionId),
   ])
 
   const students = await prisma.user.findMany({
@@ -1618,10 +1811,7 @@ export async function getClassDefenseSnapshot(
 
   return {
     serverTime: new Date().toISOString(),
-    session: {
-      ...session,
-      enabledDirections: config.enabledDirections,
-    },
+    session: buildClassDefenseSessionView(session, endState, config.enabledDirections),
     directions,
     participants: participantViews,
     monsters: monsterViews,
@@ -1748,9 +1938,12 @@ async function getClassDefenseDirectionSummaries(
 }
 
 export async function getClassDefenseDirectionSummary(sessionId: string) {
-  const session = await prisma.classDefenseSession.findUnique({
-    where: { id: sessionId },
-  })
+  const [session, endState] = await Promise.all([
+    prisma.classDefenseSession.findUnique({
+      where: { id: sessionId },
+    }),
+    getLatestClassDefenseSessionEndState(sessionId),
+  ])
 
   if (!session) {
     throw new Error('守护班级会话不存在')
@@ -1759,14 +1952,13 @@ export async function getClassDefenseDirectionSummary(sessionId: string) {
   const config = parseClassDefenseConfig(session.configJson)
 
   return {
-    session: {
+    session: buildClassDefenseSessionView({
       id: session.id,
       status: session.status,
       classHp: session.classHp,
       maxClassHp: session.maxClassHp,
       stateVersion: session.stateVersion,
-      enabledDirections: config.enabledDirections,
-    },
+    }, endState, config.enabledDirections),
     directions: await getClassDefenseDirectionSummaries(sessionId, config.enabledDirections),
   }
 }
@@ -3335,55 +3527,13 @@ export async function tickClassDefenseSession(sessionId: string) {
       })
     }
 
-    const remainingMonsters = await tx.classDefenseMonster.count({
-      where: {
-        sessionId,
-        status: {
-          in: [
-            CLASS_DEFENSE_MONSTER_STATUS.WAITING,
-            CLASS_DEFENSE_MONSTER_STATUS.WALKING,
-            CLASS_DEFENSE_MONSTER_STATUS.COMBAT,
-          ],
-        },
-      },
-    })
-
-    if (nextClassHp <= 0) {
-      await tx.classDefenseSession.update({
-        where: { id: sessionId },
-        data: {
-          status: CLASS_DEFENSE_SESSION_STATUS.ENDED,
-          endedAt: now,
-        },
-      })
-      await appendEvent(tx, {
-        sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.SESSION_ENDED,
-        payload: {
-          reason: 'CLASS_HP_ZERO',
-        },
-      })
-    } else if (remainingMonsters === 0) {
-      await tx.classDefenseSession.update({
-        where: { id: sessionId },
-        data: {
-          status: CLASS_DEFENSE_SESSION_STATUS.ENDED,
-          endedAt: now,
-        },
-      })
-      await appendEvent(tx, {
-        sessionId,
-        type: CLASS_DEFENSE_EVENT_TYPE.SESSION_ENDED,
-        payload: {
-          reason: 'ALL_MONSTERS_CLEARED',
-        },
-      })
-    }
+    const sessionEnd = await finalizeClassDefenseSessionIfEndedWithTx(tx, sessionId, now)
 
     return {
       combatResults,
       combatCancellations,
       reachedMonsters,
+      sessionEnd,
     }
   })
 
@@ -3398,6 +3548,7 @@ export async function tickClassDefenseSession(sessionId: string) {
 
   return {
     summary,
+    sessionEnd: tickResult.sessionEnd,
     combatResults: [...expiredBossCombatResults, ...tickResult.combatResults],
     combatCancellations: tickResult.combatCancellations,
     reachedMonsters: tickResult.reachedMonsters,

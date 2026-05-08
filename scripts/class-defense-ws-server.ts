@@ -10,6 +10,7 @@ import {
   joinClassDefenseSession,
   markClassDefenseHeartbeat,
   selectClassDefenseDirection,
+  settleClassDefenseSessionEnd,
   startClassDefenseCombat,
   startClassDefenseBossCombat,
   submitClassDefenseAnswer,
@@ -231,6 +232,42 @@ async function broadcastDirectionSummary(sessionId: string) {
     type: 'direction_summary',
     data: summary,
   })
+}
+
+function isSessionEndResult(value: unknown): value is 'VICTORY' | 'FAILURE' {
+  return value === 'VICTORY' || value === 'FAILURE'
+}
+
+function broadcastSessionEnded(summary: Awaited<ReturnType<typeof getClassDefenseDirectionSummary>>) {
+  const result = summary.session.result
+  if (!isSessionEndResult(result)) {
+    return false
+  }
+
+  broadcast(summary.session.id, {
+    type: 'session_ended',
+    data: {
+      result,
+      reason: summary.session.reason,
+      session: {
+        id: summary.session.id,
+        status: summary.session.status,
+        result,
+        reason: summary.session.reason,
+        classHp: summary.session.classHp,
+        maxClassHp: summary.session.maxClassHp,
+      },
+    },
+  })
+  return true
+}
+
+function stopRoomTicker(sessionId: string) {
+  const timer = roomTimers.get(sessionId)
+  if (timer) {
+    clearInterval(timer)
+    roomTimers.delete(sessionId)
+  }
 }
 
 async function broadcastDirectionSnapshot(sessionId: string, directionId: ClassDefenseDirectionId) {
@@ -591,6 +628,9 @@ async function tickRoom(sessionId: string) {
       for (const directionId of Array.from(activeDirectionsForRoom(sessionId))) {
         await broadcastDirectionSnapshot(sessionId, directionId)
       }
+      if (tickResult.sessionEnd && broadcastSessionEnded(tickResult.summary)) {
+        stopRoomTicker(sessionId)
+      }
     }
   } catch (error) {
     console.error(`[class-defense-ws] tick failed for ${sessionId}`, error)
@@ -813,10 +853,20 @@ async function handleSubmitAnswer(ws: WebSocket, state: ClientState, message: Cl
       })
     }
   }
-  scheduleRoomStateBroadcast(
-    state.sessionId,
-    result.monsterKilled ? new Map([[result.monsterId, 'KILLED']]) : undefined
-  )
+  const removalReasons = result.monsterKilled
+    ? new Map([[result.monsterId, 'KILLED']])
+    : undefined
+  const settled = result.monsterKilled
+    ? await settleClassDefenseSessionEnd(state.sessionId)
+    : null
+  if (settled) {
+    await broadcastRoomState(state.sessionId, removalReasons)
+    if (broadcastSessionEnded(settled.summary)) {
+      stopRoomTicker(state.sessionId)
+    }
+  } else {
+    scheduleRoomStateBroadcast(state.sessionId, removalReasons)
+  }
   if (result.studentDown) {
     void broadcastStudentDownMessage(state.sessionId, result.studentId, result.directionId)
       .catch((error) => {

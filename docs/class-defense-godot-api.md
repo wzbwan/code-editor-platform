@@ -228,6 +228,8 @@ Content-Type: application/json
     "session": {
       "id": "sessionId",
       "status": "ACTIVE",
+      "result": null,
+      "reason": null,
       "classHp": 9,
       "maxClassHp": 10,
       "stateVersion": 12
@@ -282,9 +284,66 @@ Content-Type: application/json
 }
 ```
 
-Godot 客户端应以 `session_snapshot` 为显示权威来源。
+结束后快照里的 `session` 会同步带上服务端权威结算结果：
 
-### 4. 点击怪物进入战斗
+```json
+{
+  "id": "sessionId",
+  "status": "ENDED",
+  "result": "VICTORY",
+  "reason": "ALL_MONSTERS_ENDED",
+  "classHp": 3,
+  "maxClassHp": 10
+}
+```
+
+Godot 客户端应以服务端快照和 `session_ended` 事件为显示权威来源，不要用 `monsters.length == 0` 判断胜利。
+
+### 4. 整场结束广播
+
+服务端按整场 session 判断结束，不按当前方向判断。班级生命归零时立即失败；所有波次不会再生成新怪，且所有已生成怪物都进入终态后胜利。
+
+胜利广播：
+
+```json
+{
+  "type": "session_ended",
+  "data": {
+    "result": "VICTORY",
+    "reason": "ALL_MONSTERS_ENDED",
+    "session": {
+      "id": "sessionId",
+      "status": "ENDED",
+      "result": "VICTORY",
+      "reason": "ALL_MONSTERS_ENDED",
+      "classHp": 3,
+      "maxClassHp": 10
+    }
+  }
+}
+```
+
+失败广播：
+
+```json
+{
+  "type": "session_ended",
+  "data": {
+    "result": "FAILURE",
+    "reason": "CLASS_HP_ZERO",
+    "session": {
+      "id": "sessionId",
+      "status": "ENDED",
+      "result": "FAILURE",
+      "reason": "CLASS_HP_ZERO",
+      "classHp": 0,
+      "maxClassHp": 10
+    }
+  }
+}
+```
+
+### 5. 点击怪物进入战斗
 
 客户端发送：
 
@@ -333,7 +392,7 @@ Godot 客户端应以 `session_snapshot` 为显示权威来源。
 }
 ```
 
-### 5. 提交答案
+### 6. 提交答案
 
 客户端发送：
 
@@ -403,7 +462,7 @@ Godot 客户端应以 `session_snapshot` 为显示权威来源。
 - `battleEnded = true` 且 `monsterKilled = true` 时，本次战斗胜利，服务端才结算击杀积分和宠物经验。
 - `battleEnded = true` 且 `studentDown = true` 时，本次战斗失败，学生等待 `reviveAt` 后复活。
 
-### 6. 逃跑
+### 7. 逃跑
 
 客户端在当前学生已有进行中的战斗时发送：
 
@@ -489,7 +548,7 @@ Godot 客户端应以 `session_snapshot` 为显示权威来源。
 - 成功快照里该怪物的 `lockedByStudentId` 应清空或置为 `null`，怪物仍按原状态留在战场。
 - 逃跑失败一般不需要广播全局快照，只需要给发起者返回 `flee_result`；如果服务端记录了逃跑冷却、失败次数等会影响 UI 的状态，也应广播或在响应中携带。
 
-### 7. 心跳
+### 8. 心跳
 
 客户端建议每 15-30 秒发送一次：
 

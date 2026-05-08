@@ -168,6 +168,9 @@
   "data": {
     "session": {
       "id": "sessionId",
+      "status": "ACTIVE",
+      "result": null,
+      "reason": null,
       "classHp": 99,
       "maxClassHp": 100,
       "enabledDirections": ["east", "south", "west", "north"]
@@ -184,6 +187,22 @@
 ```
 
 该消息不应包含完整怪物列表。
+
+会话结束后，`direction_summary.session` 和 `direction_snapshot.session` 都会同步带上服务端结算结果：
+
+```json
+{
+  "id": "sessionId",
+  "status": "ENDED",
+  "result": "VICTORY",
+  "reason": "ALL_MONSTERS_ENDED",
+  "classHp": 3,
+  "maxClassHp": 10,
+  "enabledDirections": ["east", "south", "west", "north"]
+}
+```
+
+客户端应等待 `session_ended` 或 `session.result` 判断胜负，不要用当前方向 `monsters.length == 0` 判断胜利。
 
 ## 方向内增量事件
 
