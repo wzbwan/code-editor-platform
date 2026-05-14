@@ -14,6 +14,7 @@ export default async function StudentsPage() {
       name: true,
       className: true,
       pointBalance: true,
+      pyPointBalance: true,
       createdAt: true,
       _count: { select: { submissions: true } },
     },

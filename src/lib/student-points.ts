@@ -143,7 +143,7 @@ export async function createStudentPointRecordWithTx(
   }
 }
 
-export async function listStudentPointRecords(studentId?: string, take = 30) {
+export async function listStudentPointRecords(studentId?: string, take?: number) {
   return prisma.studentPointRecord.findMany({
     where: studentId
       ? {
@@ -151,7 +151,7 @@ export async function listStudentPointRecords(studentId?: string, take = 30) {
         }
       : undefined,
     orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
-    take,
+    ...(typeof take === 'number' ? { take } : {}),
     select: {
       id: true,
       studentId: true,

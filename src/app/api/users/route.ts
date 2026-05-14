@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       name: true,
       className: true,
       pointBalance: true,
+      pyPointBalance: true,
       createdAt: true,
       _count: { select: { submissions: true } },
     },
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
       name: true,
       className: true,
       pointBalance: true,
+      pyPointBalance: true,
       createdAt: true,
     },
   })
@@ -91,6 +93,7 @@ export async function DELETE(request: NextRequest) {
 
   await prisma.submission.deleteMany({ where: { studentId: id } })
   await prisma.studentPointRecord.deleteMany({ where: { studentId: id } })
+  await prisma.studentPyPointRecord.deleteMany({ where: { studentId: id } })
   await prisma.user.delete({ where: { id } })
 
   return NextResponse.json({ success: true })

@@ -197,7 +197,7 @@ function buildLevelAccessState(params: {
 export async function getStudentChallengeHome(studentId: string) {
   const student = await prisma.user.findUnique({
     where: { id: studentId },
-    select: { id: true, className: true },
+    select: { id: true, className: true, pyPointBalance: true },
   })
 
   if (!student) {
@@ -265,6 +265,7 @@ export async function getStudentChallengeHome(studentId: string) {
 
   return {
     className,
+    pyPointBalance: student.pyPointBalance,
     chapters,
   }
 }

@@ -10,6 +10,12 @@ export const POINT_SOURCE = {
   CLASS_DEFENSE: 'CLASS_DEFENSE',
 } as const
 
+export const PY_POINT_SOURCE = {
+  WEB: 'WEB',
+  GODOT_AI_HELP: 'GODOT_AI_HELP',
+  PRACTICE: 'PRACTICE',
+} as const
+
 export const QUESTION_TYPES = {
   SINGLE: '单选题',
   MULTIPLE: '多选题',

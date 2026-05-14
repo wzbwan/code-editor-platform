@@ -1,11 +1,10 @@
 import { getServerSession } from 'next-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth-options'
-import { POINT_SOURCE } from '@/lib/constants'
 import {
-  createStudentPointRecord,
-  listStudentPointRecords,
-} from '@/lib/student-points'
+  grantStudentPyPoints,
+  listStudentPyPointRecords,
+} from '@/lib/student-py-points'
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -15,21 +14,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const studentId = searchParams.get('studentId') || undefined
-  const takeParam = searchParams.get('take')
-  let take: number | undefined
-
-  if (takeParam === 'all') {
-    if (!studentId) {
-      return NextResponse.json({ error: '查看全部记录需要指定学生' }, { status: 400 })
-    }
-  } else {
-    take = Number(takeParam || 30)
-    if (!Number.isInteger(take) || take <= 0) {
-      return NextResponse.json({ error: '记录数量参数无效' }, { status: 400 })
-    }
-  }
-
-  const records = await listStudentPointRecords(studentId, take)
+  const records = await listStudentPyPointRecords(studentId, 30)
 
   return NextResponse.json(records)
 }
@@ -41,15 +26,17 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { studentId, delta, reason, occurredAt } = body
+  const studentId = typeof body.studentId === 'string' ? body.studentId.trim() : ''
+  const className = typeof body.className === 'string' ? body.className.trim() : ''
+  const delta = Number(body.delta)
+  const reason = String(body.reason ?? '')
 
   try {
-    const result = await createStudentPointRecord({
-      studentId,
-      delta: Number(delta),
-      reason: String(reason ?? ''),
-      occurredAt: occurredAt ? new Date(occurredAt) : undefined,
-      source: POINT_SOURCE.WEB,
+    const result = await grantStudentPyPoints({
+      studentId: studentId || undefined,
+      className: className || undefined,
+      delta,
+      reason,
       operatorId: session.user.id,
       operatorLabel: session.user.name,
     })
@@ -58,8 +45,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : '加分/扣分记录创建失败',
+        error: error instanceof Error ? error.message : 'Py点发放失败',
       },
       { status: 400 }
     )

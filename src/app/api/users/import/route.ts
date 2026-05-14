@@ -26,6 +26,7 @@ type ImportedStudent = {
   username: string
   className: string | null
   pointBalance: number
+  pyPointBalance: number
   createdAt: Date
 }
 
@@ -259,6 +260,7 @@ export async function POST(request: Request) {
                 username: true,
                 className: true,
                 pointBalance: true,
+                pyPointBalance: true,
                 createdAt: true,
               },
             })
@@ -278,6 +280,7 @@ export async function POST(request: Request) {
                 username: true,
                 className: true,
                 pointBalance: true,
+                pyPointBalance: true,
                 createdAt: true,
               },
             })

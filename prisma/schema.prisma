@@ -8,28 +8,31 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  password     String
-  name         String
-  className    String?
-  role         String   @default("STUDENT")
-  pointBalance Float    @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  username       String   @unique
+  password       String
+  name           String
+  className      String?
+  role           String   @default("STUDENT")
+  pointBalance   Float    @default(0)
+  pyPointBalance Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   submissions              Submission[]
-  assignments              Assignment[]             @relation("TeacherAssignments")
-  pointRecords             StudentPointRecord[]     @relation("StudentPointRecords")
-  operatedPointRecords     StudentPointRecord[]     @relation("OperatorPointRecords")
-  questionBankItems        QuestionBankItem[]       @relation("TeacherQuestionBankItems")
-  practicePapers           PracticePaper[]          @relation("TeacherPracticePapers")
-  teachingPracticeSessions PracticeSession[]        @relation("TeacherPracticeSessions")
-  studentPracticeSessions  PracticeSessionStudent[] @relation("StudentPracticeSessions")
-  practiceResponses        PracticeResponse[]       @relation("StudentPracticeResponses")
-  challengeProgresses      ChallengeProgress[]      @relation("StudentChallengeProgresses")
-  challengeSubmissions     ChallengeSubmission[]    @relation("StudentChallengeSubmissions")
-  godotSessionBootstraps   GodotSessionBootstrap[]  @relation("UserGodotSessionBootstraps")
+  assignments              Assignment[]              @relation("TeacherAssignments")
+  pointRecords             StudentPointRecord[]      @relation("StudentPointRecords")
+  operatedPointRecords     StudentPointRecord[]      @relation("OperatorPointRecords")
+  pyPointRecords           StudentPyPointRecord[]    @relation("StudentPyPointRecords")
+  operatedPyPointRecords   StudentPyPointRecord[]    @relation("OperatorPyPointRecords")
+  questionBankItems        QuestionBankItem[]        @relation("TeacherQuestionBankItems")
+  practicePapers           PracticePaper[]           @relation("TeacherPracticePapers")
+  teachingPracticeSessions PracticeSession[]         @relation("TeacherPracticeSessions")
+  studentPracticeSessions  PracticeSessionStudent[]  @relation("StudentPracticeSessions")
+  practiceResponses        PracticeResponse[]        @relation("StudentPracticeResponses")
+  challengeProgresses      ChallengeProgress[]       @relation("StudentChallengeProgresses")
+  challengeSubmissions     ChallengeSubmission[]     @relation("StudentChallengeSubmissions")
+  godotSessionBootstraps   GodotSessionBootstrap[]   @relation("UserGodotSessionBootstraps")
   classDefenseMonsterTypes ClassDefenseMonsterType[] @relation("TeacherClassDefenseMonsterTypes")
   pet                      StudentPet?
 }
@@ -100,6 +103,29 @@ model StudentPointRecord {
 
   @@index([studentId, occurredAt])
   @@index([occurredAt])
+}
+
+model StudentPyPointRecord {
+  id              String   @id @default(cuid())
+  studentId       String
+  student         User     @relation("StudentPyPointRecords", fields: [studentId], references: [id], onDelete: Cascade)
+  studentUsername String
+  operatorId      String?
+  operator        User?    @relation("OperatorPyPointRecords", fields: [operatorId], references: [id], onDelete: SetNull)
+  operatorLabel   String?
+  delta           Int
+  balanceBefore   Int
+  balanceAfter    Int
+  reason          String
+  occurredAt      DateTime
+  source          String   @default("WEB")
+  clientRequestId String?
+  createdAt       DateTime @default(now())
+
+  @@unique([studentId, clientRequestId])
+  @@index([studentId, occurredAt])
+  @@index([occurredAt])
+  @@index([source])
 }
 
 model StudentPet {

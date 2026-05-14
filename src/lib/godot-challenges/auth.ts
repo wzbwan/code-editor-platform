@@ -24,6 +24,7 @@ export interface GodotChallengeStudent {
   name: string
   role: string
   className: string
+  pyPointBalance?: number
 }
 
 function getNextAuthSecret() {
@@ -79,6 +80,7 @@ export async function loginGodotChallengeStudent(input: {
       name: true,
       role: true,
       className: true,
+      pyPointBalance: true,
       password: true,
     },
   })
@@ -98,6 +100,7 @@ export async function loginGodotChallengeStudent(input: {
     name: student.name,
     role: student.role,
     className: student.className || '',
+    pyPointBalance: student.pyPointBalance,
   }
   const accessToken = await issueToken({
     sub: user.id,

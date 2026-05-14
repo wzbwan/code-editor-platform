@@ -11,16 +11,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    const pyPointProfile = await getStudentPyPointBalance(student.id)
+    const data = await getStudentPyPointBalance(student.id)
     return NextResponse.json({
-      user: {
-        ...student,
-        pyPointBalance: pyPointProfile.pyPointBalance,
-      },
+      pyPointBalance: data.pyPointBalance,
+      user: data,
     })
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '获取当前用户失败' },
+      { error: error instanceof Error ? error.message : '获取Py点失败' },
       { status: 400 }
     )
   }

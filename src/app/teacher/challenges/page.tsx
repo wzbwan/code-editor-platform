@@ -4,6 +4,7 @@ import {
   getTeacherChallengeTaskListData,
   listChallengeClassOptions,
 } from '@/lib/challenges/service'
+import ChallengePyPointGrantPanel from './ChallengePyPointGrantPanel'
 
 interface Props {
   searchParams: Promise<{ className?: string }>
@@ -68,6 +69,13 @@ export default async function TeacherChallengesPage({ searchParams }: Props) {
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <ChallengePyPointGrantPanel
+          className={selectedClassName}
+          totalStudents={data.totalStudents}
+        />
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">

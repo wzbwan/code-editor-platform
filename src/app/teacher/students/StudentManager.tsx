@@ -15,6 +15,7 @@ interface Student {
   name: string
   className: string | null
   pointBalance: number
+  pyPointBalance: number
   createdAt: string
   _count: { submissions: number }
 }
@@ -91,8 +92,13 @@ export default function StudentManager({
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [pointLoadingId, setPointLoadingId] = useState<string | null>(null)
+  const [pyPointLoadingId, setPyPointLoadingId] = useState<string | null>(null)
   const [resettingPasswordId, setResettingPasswordId] = useState<string | null>(null)
   const [recentPointRecords, setRecentPointRecords] = useState(initialRecentPointRecords)
+  const [recordModalStudent, setRecordModalStudent] =
+    useState<StudentWithSearchIndex | null>(null)
+  const [studentPointRecords, setStudentPointRecords] = useState<PointRecord[]>([])
+  const [recordsLoading, setRecordsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const filteredStudents = students.filter((student) =>
     matchesStudentQuery(student, query)
@@ -138,6 +144,10 @@ export default function StudentManager({
       setRecentPointRecords((current) =>
         current.filter((record) => record.studentId !== id)
       )
+      if (recordModalStudent?.id === id) {
+        setRecordModalStudent(null)
+        setStudentPointRecords([])
+      }
     }
   }
 
@@ -257,25 +267,12 @@ export default function StudentManager({
         )
       )
       setRecentPointRecords((current) => [data.record, ...current].slice(0, 20))
+      if (recordModalStudent?.id === student.id) {
+        setStudentPointRecords((current) => [data.record, ...current])
+      }
     } finally {
       setPointLoadingId(null)
     }
-  }
-
-  const handleQuickPointAction = async (
-    student: StudentWithSearchIndex,
-    delta: number
-  ) => {
-    const actionText = delta > 0 ? `加 ${delta} 分` : `扣 ${Math.abs(delta)} 分`
-    const reason = window.prompt(
-      `给 ${student.name}（${student.username}）${actionText}，请输入理由：`
-    )
-
-    if (!reason?.trim()) {
-      return
-    }
-
-    await submitPointChange(student, delta, reason.trim())
   }
 
   const handleCustomPointAction = async (student: StudentWithSearchIndex) => {
@@ -299,6 +296,82 @@ export default function StudentManager({
     }
 
     await submitPointChange(student, delta, reason.trim())
+  }
+
+  const handleOpenPointRecords = async (student: StudentWithSearchIndex) => {
+    setRecordModalStudent(student)
+    setStudentPointRecords([])
+    setRecordsLoading(true)
+
+    try {
+      const params = new URLSearchParams({
+        studentId: student.id,
+        take: 'all',
+      })
+      const res = await fetch(`/api/points?${params.toString()}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '积分记录加载失败')
+        setRecordModalStudent(null)
+        return
+      }
+
+      setStudentPointRecords(data)
+    } finally {
+      setRecordsLoading(false)
+    }
+  }
+
+  const handlePyPointGrant = async (student: StudentWithSearchIndex) => {
+    const amountInput = window.prompt(
+      `请输入要给 ${student.name}（${student.username}）增加的 Py点数量：`
+    )
+
+    if (!amountInput?.trim()) {
+      return
+    }
+
+    const delta = Number.parseInt(amountInput.trim(), 10)
+    if (!Number.isInteger(delta) || delta <= 0) {
+      alert('Py点数量必须是正整数')
+      return
+    }
+
+    const reason =
+      window.prompt('请输入本次增加 Py点的理由：')?.trim() || '教师手动发放Py点'
+
+    setPyPointLoadingId(student.id)
+
+    try {
+      const res = await fetch('/api/py-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: student.id,
+          delta,
+          reason,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Py点发放失败')
+        return
+      }
+
+      const updatedStudent = data.students?.[0]
+      setStudents((current) =>
+        current.map((item) =>
+          item.id === student.id
+            ? { ...item, pyPointBalance: updatedStudent?.pyPointBalance ?? item.pyPointBalance + delta }
+            : item
+        )
+      )
+    } finally {
+      setPyPointLoadingId(null)
+    }
   }
 
   const handleResetPassword = async (student: StudentWithSearchIndex) => {
@@ -471,6 +544,7 @@ export default function StudentManager({
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">用户名</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">班级</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">积分</th>
+                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">Py点</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">提交数</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">创建时间</th>
                 <th className="px-6 py-3 text-right text-sm font-medium text-gray-500">操作</th>
@@ -493,39 +567,37 @@ export default function StudentManager({
                       {formatOneDecimal(student.pointBalance)}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-700">
+                      {student.pyPointBalance}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">{student._count.submissions}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
                     {formatAppDate(student.createdAt)}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => handleQuickPointAction(student, 1)}
-                        disabled={pointLoadingId === student.id}
-                        className="rounded bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        +1
-                      </button>
-                      <button
-                        onClick={() => handleQuickPointAction(student, 2)}
-                        disabled={pointLoadingId === student.id}
-                        className="rounded bg-emerald-700 px-3 py-1 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
-                      >
-                        +2
-                      </button>
-                      <button
-                        onClick={() => handleQuickPointAction(student, -1)}
-                        disabled={pointLoadingId === student.id}
-                        className="rounded bg-amber-600 px-3 py-1 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
-                      >
-                        -1
-                      </button>
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button
                         onClick={() => handleCustomPointAction(student)}
                         disabled={pointLoadingId === student.id}
+                        className="rounded bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {pointLoadingId === student.id ? '处理中...' : '加/减分'}
+                      </button>
+                      <button
+                        onClick={() => handleOpenPointRecords(student)}
+                        disabled={recordsLoading && recordModalStudent?.id === student.id}
                         className="rounded bg-slate-600 px-3 py-1 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
                       >
-                        自定义
+                        记录
+                      </button>
+                      <button
+                        onClick={() => handlePyPointGrant(student)}
+                        disabled={pyPointLoadingId === student.id}
+                        className="rounded bg-sky-600 px-3 py-1 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {pyPointLoadingId === student.id ? '发放中...' : '+Py点'}
                       </button>
                       <button
                         onClick={() => handleResetPassword(student)}
@@ -595,6 +667,84 @@ export default function StudentManager({
           </div>
         )}
       </div>
+
+      {recordModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {recordModalStudent.name} 的积分记录
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  用户名：{recordModalStudent.username}
+                  {recordModalStudent.className ? ` / 班级：${recordModalStudent.className}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecordModalStudent(null)}
+                className="rounded bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4">
+              {recordsLoading ? (
+                <div className="py-10 text-center text-sm text-gray-500">
+                  正在加载积分记录...
+                </div>
+              ) : studentPointRecords.length === 0 ? (
+                <div className="py-10 text-center text-sm text-gray-500">
+                  暂无积分记录
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {studentPointRecords.map((record) => (
+                    <div
+                      key={record.id}
+                      className="rounded-lg border border-gray-100 px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                record.delta > 0
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {formatSignedOneDecimal(record.delta)}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              {formatAppDateTime(record.occurredAt)}
+                            </span>
+                          </div>
+                          <p className="mt-2 break-words text-sm text-gray-800">
+                            {record.reason}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-sm text-gray-500 sm:text-right">
+                          <div>
+                            来源：
+                            {record.source === 'MOBILE_API' ? '手机接口' : '网页后台'}
+                          </div>
+                          {(record.operator?.name || record.operatorLabel) && (
+                            <div>
+                              操作人：{record.operator?.name || record.operatorLabel}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
