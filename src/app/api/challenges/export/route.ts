@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
       stderr: true,
       pointsAwarded: true,
       submittedAt: true,
+      attempt: {
+        select: {
+          id: true,
+          status: true,
+          focusLostCount: true,
+          firstFocusLostAt: true,
+          lastFocusReturnedAt: true,
+          openedAt: true,
+          submittedAt: true,
+        },
+      },
       student: {
         select: {
           id: true,

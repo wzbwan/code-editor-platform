@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  ChallengeAttemptError,
   GodotChallengeExecutionInput,
   SubmittedVariableResult,
   parseGodotVariableProbeOutput,
@@ -133,10 +134,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const chapterKey = typeof body.chapterKey === 'string' ? body.chapterKey.trim() : ''
     const levelKey = typeof body.levelKey === 'string' ? body.levelKey.trim() : ''
+    const attemptId = typeof body.attemptId === 'string' ? body.attemptId.trim() : ''
     const code = typeof body.code === 'string' ? body.code : ''
     const execution = parseExecution(body.execution)
 
-    if (!chapterKey || !levelKey || !code.trim()) {
+    if (!chapterKey || !levelKey || !attemptId || !code.trim()) {
       return NextResponse.json({ error: '缺少必填字段' }, { status: 400 })
     }
 
@@ -159,6 +161,7 @@ export async function POST(request: NextRequest) {
     const result = await submitStudentChallengeExecution(student.id, {
       chapterKey,
       levelKey,
+      attemptId,
       code,
       execution,
     })
@@ -168,6 +171,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : '提交失败'
+    if (error instanceof ChallengeAttemptError) {
+      return NextResponse.json(
+        {
+          error: message,
+          ...(error.attemptStatus ? { attemptStatus: error.attemptStatus } : {}),
+        },
+        { status: error.statusCode }
+      )
+    }
+
     return NextResponse.json(
       { error: message },
       { status: message.includes('尚未解锁') ? 403 : 400 }

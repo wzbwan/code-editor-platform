@@ -32,6 +32,7 @@ model User {
   practiceResponses        PracticeResponse[]        @relation("StudentPracticeResponses")
   challengeProgresses      ChallengeProgress[]       @relation("StudentChallengeProgresses")
   challengeSubmissions     ChallengeSubmission[]     @relation("StudentChallengeSubmissions")
+  challengeAttempts        ChallengeAttempt[]        @relation("StudentChallengeAttempts")
   godotSessionBootstraps   GodotSessionBootstrap[]   @relation("UserGodotSessionBootstraps")
   classDefenseMonsterTypes ClassDefenseMonsterType[] @relation("TeacherClassDefenseMonsterTypes")
   pet                      StudentPet?
@@ -558,9 +559,51 @@ model ChallengeSubmission {
   student    User   @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
   chapterKey String
   levelKey   String
+  attemptId  String?
+  attempt    ChallengeAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
 
   @@index([studentId, submittedAt])
   @@index([chapterKey, levelKey, submittedAt])
+  @@index([attemptId])
+}
+
+model ChallengeAttempt {
+  id                  String    @id @default(cuid())
+  studentId           String
+  student             User      @relation("StudentChallengeAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  chapterKey          String
+  levelKey            String
+  status              String    @default("ACTIVE")
+  focusLostCount      Int       @default(0)
+  firstFocusLostAt    DateTime?
+  lastFocusReturnedAt DateTime?
+  openedAt            DateTime  @default(now())
+  submittedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  events      ChallengeAttemptEvent[]
+  submissions ChallengeSubmission[]
+
+  @@index([studentId, chapterKey, levelKey, openedAt])
+  @@index([studentId, status])
+  @@index([status, openedAt])
+}
+
+model ChallengeAttemptEvent {
+  id         String   @id @default(cuid())
+  attemptId  String
+  attempt    ChallengeAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  studentId  String
+  chapterKey String
+  levelKey   String
+  type       String
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([attemptId, occurredAt])
+  @@index([studentId, occurredAt])
+  @@index([type, occurredAt])
 }
 
 model ChallengeSubmitCooldown {

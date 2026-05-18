@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getAllChallengeChapters, getChallengeChapter, getChallengeLevel } from '@/lib/challenges/registry'
 import { createStudentPointRecordWithTx } from '@/lib/student-points'
@@ -6,6 +7,29 @@ import { ChallengeJudgeResult, ChallengeValue } from '@/lib/challenges/types'
 
 const VARIABLE_START_MARKER = '__CODEX_CHALLENGE_VARIABLES_START__'
 const VARIABLE_END_MARKER = '__CODEX_CHALLENGE_VARIABLES_END__'
+
+export const CHALLENGE_ATTEMPT_STATUS = {
+  ACTIVE: 'ACTIVE',
+  INVALIDATED_BY_FOCUS_LOSS: 'INVALIDATED_BY_FOCUS_LOSS',
+  SUBMITTED: 'SUBMITTED',
+} as const
+
+export const CHALLENGE_ATTEMPT_EVENT_TYPE = {
+  FOCUS_LOST: 'focus_lost',
+  FOCUS_RETURNED: 'focus_returned',
+} as const
+
+export class ChallengeAttemptError extends Error {
+  statusCode: number
+  attemptStatus?: string
+
+  constructor(message: string, statusCode = 400, attemptStatus?: string) {
+    super(message)
+    this.name = 'ChallengeAttemptError'
+    this.statusCode = statusCode
+    this.attemptStatus = attemptStatus
+  }
+}
 
 export interface SubmittedVariableResult {
   missing: boolean
@@ -157,6 +181,206 @@ function buildGodotPublicJudge(level: NonNullable<ReturnType<typeof getChallenge
   return {
     mode: 'OUTPUT' as const,
   }
+}
+
+export async function createStudentChallengeAttempt(input: {
+  studentId: string
+  chapterKey: string
+  levelKey: string
+}) {
+  const now = new Date()
+  const attempt = await prisma.challengeAttempt.create({
+    data: {
+      studentId: input.studentId,
+      chapterKey: input.chapterKey,
+      levelKey: input.levelKey,
+      status: CHALLENGE_ATTEMPT_STATUS.ACTIVE,
+      openedAt: now,
+    },
+    select: {
+      id: true,
+      status: true,
+      openedAt: true,
+    },
+  })
+
+  return attempt
+}
+
+export async function recordStudentChallengeAttemptEvent(
+  studentId: string,
+  input: {
+    attemptId: string
+    chapterKey: string
+    levelKey: string
+    type: string
+  }
+) {
+  const attemptId = input.attemptId.trim()
+  const chapterKey = input.chapterKey.trim()
+  const levelKey = input.levelKey.trim()
+  const type = input.type.trim()
+
+  if (!attemptId || !chapterKey || !levelKey || !type) {
+    throw new ChallengeAttemptError('缺少必填字段', 400)
+  }
+
+  if (
+    type !== CHALLENGE_ATTEMPT_EVENT_TYPE.FOCUS_LOST &&
+    type !== CHALLENGE_ATTEMPT_EVENT_TYPE.FOCUS_RETURNED
+  ) {
+    throw new ChallengeAttemptError('type 非法', 400)
+  }
+
+  const now = new Date()
+
+  return prisma.$transaction(async (tx) => {
+    const attempt = await tx.challengeAttempt.findUnique({
+      where: { id: attemptId },
+      select: {
+        id: true,
+        studentId: true,
+        chapterKey: true,
+        levelKey: true,
+        status: true,
+        firstFocusLostAt: true,
+      },
+    })
+
+    if (!attempt) {
+      throw new ChallengeAttemptError('attempt 不存在', 404)
+    }
+
+    if (
+      attempt.studentId !== studentId ||
+      attempt.chapterKey !== chapterKey ||
+      attempt.levelKey !== levelKey
+    ) {
+      throw new ChallengeAttemptError('attempt 不属于当前学生，或章节/关卡不匹配', 403)
+    }
+
+    await tx.challengeAttemptEvent.create({
+      data: {
+        attemptId,
+        studentId,
+        chapterKey,
+        levelKey,
+        type,
+        occurredAt: now,
+      },
+    })
+
+    if (type === CHALLENGE_ATTEMPT_EVENT_TYPE.FOCUS_LOST) {
+      await tx.challengeAttempt.updateMany({
+        where: {
+          id: attemptId,
+          status: {
+            not: CHALLENGE_ATTEMPT_STATUS.SUBMITTED,
+          },
+        },
+        data: {
+          status: CHALLENGE_ATTEMPT_STATUS.INVALIDATED_BY_FOCUS_LOSS,
+          focusLostCount: {
+            increment: 1,
+          },
+          firstFocusLostAt: attempt.firstFocusLostAt || now,
+        },
+      })
+    } else {
+      await tx.challengeAttempt.update({
+        where: { id: attemptId },
+        data: {
+          lastFocusReturnedAt: now,
+        },
+      })
+    }
+
+    const updatedAttempt = await tx.challengeAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+      select: {
+        status: true,
+      },
+    })
+
+    return {
+      success: true,
+      attemptStatus: updatedAttempt.status,
+    }
+  })
+}
+
+async function markChallengeAttemptSubmittedWithTx(
+  tx: Prisma.TransactionClient,
+  studentId: string,
+  input: {
+    attemptId?: string
+    chapterKey: string
+    levelKey: string
+    submittedAt: Date
+  }
+) {
+  const attemptId = input.attemptId?.trim() || ''
+
+  if (!attemptId) {
+    throw new ChallengeAttemptError('缺少 attemptId', 400)
+  }
+
+  const attempt = await tx.challengeAttempt.findUnique({
+    where: { id: attemptId },
+    select: {
+      id: true,
+      studentId: true,
+      chapterKey: true,
+      levelKey: true,
+      status: true,
+    },
+  })
+
+  if (!attempt) {
+    throw new ChallengeAttemptError('attempt 不存在', 404)
+  }
+
+  if (
+    attempt.studentId !== studentId ||
+    attempt.chapterKey !== input.chapterKey ||
+    attempt.levelKey !== input.levelKey
+  ) {
+    throw new ChallengeAttemptError('attempt 不属于当前学生，或章节/关卡不匹配', 403)
+  }
+
+  if (attempt.status !== CHALLENGE_ATTEMPT_STATUS.ACTIVE) {
+    const message =
+      attempt.status === CHALLENGE_ATTEMPT_STATUS.INVALIDATED_BY_FOCUS_LOSS
+        ? '本次尝试已失效，请重新进入关卡后再提交。'
+        : '本次尝试已提交，请重新进入关卡后再提交。'
+    throw new ChallengeAttemptError(message, 403, attempt.status)
+  }
+
+  const submitted = await tx.challengeAttempt.updateMany({
+    where: {
+      id: attemptId,
+      status: CHALLENGE_ATTEMPT_STATUS.ACTIVE,
+    },
+    data: {
+      status: CHALLENGE_ATTEMPT_STATUS.SUBMITTED,
+      submittedAt: input.submittedAt,
+    },
+  })
+
+  if (submitted.count !== 1) {
+    const latestAttempt = await tx.challengeAttempt.findUnique({
+      where: { id: attemptId },
+      select: { status: true },
+    })
+    const attemptStatus = latestAttempt?.status || attempt.status
+    const message =
+      attemptStatus === CHALLENGE_ATTEMPT_STATUS.INVALIDATED_BY_FOCUS_LOSS
+        ? '本次尝试已失效，请重新进入关卡后再提交。'
+        : '本次尝试已提交，请重新进入关卡后再提交。'
+    throw new ChallengeAttemptError(message, 403, attemptStatus)
+  }
+
+  return attempt
 }
 
 function buildLevelAccessState(params: {
@@ -533,6 +757,7 @@ export async function submitStudentChallengeExecution(
   input: {
     chapterKey: string
     levelKey: string
+    attemptId: string
     code: string
     execution: GodotChallengeExecutionInput
   }
@@ -542,6 +767,7 @@ export async function submitStudentChallengeExecution(
   return submitStudentChallenge(studentId, {
     chapterKey: input.chapterKey,
     levelKey: input.levelKey,
+    attemptId: input.attemptId,
     code: input.code,
     judgeResult,
   })
@@ -552,6 +778,7 @@ export async function submitStudentChallenge(
   input: {
     chapterKey: string
     levelKey: string
+    attemptId?: string
     code: string
     judgeResult: {
       passed: boolean
@@ -586,6 +813,13 @@ export async function submitStudentChallenge(
   const now = new Date()
 
   return prisma.$transaction(async (tx) => {
+    const attempt = await markChallengeAttemptSubmittedWithTx(tx, studentId, {
+      attemptId: input.attemptId,
+      chapterKey: input.chapterKey,
+      levelKey: input.levelKey,
+      submittedAt: now,
+    })
+
     const existingProgress = await tx.challengeProgress.findUnique({
       where: {
         studentId_chapterKey_levelKey: {
@@ -616,6 +850,7 @@ export async function submitStudentChallenge(
         stderr: judgeResult.stderr || null,
         pointsAwarded,
         submittedAt: now,
+        attemptId: attempt.id,
       },
     })
 
@@ -672,6 +907,7 @@ export async function submitStudentChallenge(
       ...judgeResult,
       isFirstPass,
       pointsAwarded,
+      attemptStatus: CHALLENGE_ATTEMPT_STATUS.SUBMITTED,
     }
   })
 }
