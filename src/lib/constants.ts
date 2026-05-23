@@ -18,6 +18,7 @@ export const PY_POINT_SOURCE = {
 
 export const QUESTION_TYPES = {
   SINGLE: '单选题',
+  CODE_READING: '代码理解题',
   MULTIPLE: '多选题',
   JUDGE: '判断题',
   BLANK: '填空题',
@@ -34,6 +35,24 @@ export const PRACTICE_STATUSES = {
   ACTIVE: 'ACTIVE',
   REVIEW: 'REVIEW',
   ENDED: 'ENDED',
+} as const
+
+export const EXAM_STATUSES = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  ENDED: 'ENDED',
+} as const
+
+export const EXAM_STUDENT_STATUSES = {
+  IN_PROGRESS: 'IN_PROGRESS',
+  SUBMITTED: 'SUBMITTED',
+  AUTO_SUBMITTED: 'AUTO_SUBMITTED',
+} as const
+
+export const EXAM_EVENT_TYPES = {
+  FOCUS_LOST: 'focus_lost',
+  FOCUS_RETURNED: 'focus_returned',
+  HEARTBEAT: 'heartbeat',
 } as const
 
 export const UNASSIGNED_CLASS_FILTER = '__UNASSIGNED__'

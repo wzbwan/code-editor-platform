@@ -32,6 +32,14 @@ const TYPE_ALIASES: Record<string, QuestionType> = {
   单选: QUESTION_TYPES.SINGLE,
   single: QUESTION_TYPES.SINGLE,
   radio: QUESTION_TYPES.SINGLE,
+  代码理解题: QUESTION_TYPES.CODE_READING,
+  代码理解: QUESTION_TYPES.CODE_READING,
+  代码阅读题: QUESTION_TYPES.CODE_READING,
+  代码阅读: QUESTION_TYPES.CODE_READING,
+  程序阅读题: QUESTION_TYPES.CODE_READING,
+  程序阅读: QUESTION_TYPES.CODE_READING,
+  codereading: QUESTION_TYPES.CODE_READING,
+  codecomprehension: QUESTION_TYPES.CODE_READING,
   多选题: QUESTION_TYPES.MULTIPLE,
   多选: QUESTION_TYPES.MULTIPLE,
   multiple: QUESTION_TYPES.MULTIPLE,
@@ -94,6 +102,18 @@ export function matchClassFilter(value: string | null, classFilter: string) {
   }
 
   return (value?.trim() || '') === classFilter
+}
+
+export function isSingleChoiceQuestionType(type: string) {
+  return type === QUESTION_TYPES.SINGLE || type === QUESTION_TYPES.CODE_READING
+}
+
+export function isOptionQuestionType(type: string) {
+  return (
+    isSingleChoiceQuestionType(type) ||
+    type === QUESTION_TYPES.MULTIPLE ||
+    type === QUESTION_TYPES.JUDGE
+  )
 }
 
 export function parseQuestionRows(rows: (string | number | null)[][]) {
@@ -163,12 +183,12 @@ export function parseQuestionRows(rows: (string | number | null)[][]) {
     }
 
     if (
-      (type === QUESTION_TYPES.SINGLE || type === QUESTION_TYPES.MULTIPLE) &&
+      (isSingleChoiceQuestionType(type) || type === QUESTION_TYPES.MULTIPLE) &&
       (!optionA || !optionB)
     ) {
       skippedRows.push({
         rowNumber,
-        reason: '单选题/多选题至少需要选项A和选项B',
+        reason: '单选题/代码理解题/多选题至少需要选项A和选项B',
         content,
       })
       continue
@@ -234,7 +254,7 @@ export function evaluateQuestionAnswer(
     return false
   }
 
-  if (question.type === QUESTION_TYPES.SINGLE) {
+  if (isSingleChoiceQuestionType(question.type)) {
     return tokenizeOptionAnswer(rawAnswer)[0] === tokenizeOptionAnswer(question.answer)[0]
   }
 

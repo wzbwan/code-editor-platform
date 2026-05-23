@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import QuestionContent from '@/components/QuestionContent'
 import { QUESTION_TYPES } from '@/lib/constants'
-import { getQuestionOptionEntries } from '@/lib/quiz'
+import { getQuestionOptionEntries, isOptionQuestionType } from '@/lib/quiz'
 
 interface PaperQuestion {
   id: string
@@ -63,11 +64,7 @@ function createQuestionForm(question: PaperQuestion): QuestionFormState {
 }
 
 function shouldShowOptions(type: string) {
-  return (
-    type === QUESTION_TYPES.SINGLE ||
-    type === QUESTION_TYPES.MULTIPLE ||
-    type === QUESTION_TYPES.JUDGE
-  )
+  return isOptionQuestionType(type)
 }
 
 export default function PaperEditor({ initialPaper }: Props) {
@@ -504,7 +501,7 @@ export default function PaperEditor({ initialPaper }: Props) {
                         )
                       }
                       className="w-full rounded-lg border px-3 py-2"
-                      placeholder="多选题用逗号分隔，如 A,C"
+                      placeholder="单选/代码理解填 A；多选题用逗号分隔，如 A,C"
                     />
                   </div>
 
@@ -528,9 +525,7 @@ export default function PaperEditor({ initialPaper }: Props) {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="whitespace-pre-wrap text-lg text-slate-800">
-                    {question.content}
-                  </div>
+                  <QuestionContent content={question.content} className="text-lg" />
                   {optionEntries.length > 0 && (
                     <div className="grid gap-3 md:grid-cols-2">
                       {optionEntries.map((option) => (

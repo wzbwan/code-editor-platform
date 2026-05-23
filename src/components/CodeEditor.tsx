@@ -1,16 +1,22 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Highlight, themes } from 'prism-react-renderer'
 
 interface CodeEditorProps {
   code: string
   onChange: (code: string) => void
   readOnly?: boolean
   className?: string
+  minHeightClassName?: string
 }
 
-export default function CodeEditor({ code, onChange, readOnly = false, className = '' }: CodeEditorProps) {
+export default function CodeEditor({
+  code,
+  onChange,
+  readOnly = false,
+  className = '',
+  minHeightClassName = 'min-h-[400px]',
+}: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [showWarning, setShowWarning] = useState(false)
 
@@ -77,29 +83,13 @@ export default function CodeEditor({ code, onChange, readOnly = false, className
           禁止粘贴代码，请手动输入！
         </div>
       )}
-      <div className="relative flex bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
+      <div className={`relative flex rounded-lg border border-gray-700 bg-gray-900 ${minHeightClassName}`}>
         <div className="flex-shrink-0 bg-gray-800 text-gray-500 text-right select-none py-4 px-3 font-mono text-sm leading-6">
           {Array.from({ length: lineCount }, (_, i) => (
             <div key={i + 1}>{i + 1}</div>
           ))}
         </div>
         <div className="relative flex-1">
-          <Highlight theme={themes.vsDark} code={code || ' '} language="python">
-            {({ className: hlClassName, style, tokens, getLineProps, getTokenProps }) => (
-              <pre
-                className={`${hlClassName} absolute inset-0 p-4 m-0 overflow-auto font-mono text-sm leading-6 pointer-events-none`}
-                style={{ ...style, background: 'transparent', margin: 0 }}
-              >
-                {tokens.map((line, i) => (
-                  <div key={i} {...getLineProps({ line })}>
-                    {line.map((token, key) => (
-                      <span key={key} {...getTokenProps({ token })} />
-                    ))}
-                  </div>
-                ))}
-              </pre>
-            )}
-          </Highlight>
           <textarea
             ref={textareaRef}
             value={code}
@@ -109,8 +99,12 @@ export default function CodeEditor({ code, onChange, readOnly = false, className
             onContextMenu={handleContextMenu}
             spellCheck={false}
             readOnly={readOnly}
-            className="relative w-full h-full min-h-[400px] p-4 bg-transparent text-transparent caret-white font-mono text-sm leading-6 resize-none focus:outline-none selection:bg-blue-500/30"
-            style={{ caretColor: 'white' }}
+            className={`block h-full w-full resize-none overflow-auto bg-gray-900 p-4 font-mono text-sm leading-6 text-slate-100 caret-white focus:outline-none selection:bg-blue-500/40 ${minHeightClassName}`}
+            style={{
+              caretColor: 'white',
+              fontVariantLigatures: 'none',
+              tabSize: 4,
+            }}
             placeholder="在此输入Python代码..."
           />
         </div>

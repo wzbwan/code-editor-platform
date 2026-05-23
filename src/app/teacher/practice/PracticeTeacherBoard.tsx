@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import QuestionContent from '@/components/QuestionContent'
 import { PRACTICE_MODES, PRACTICE_STATUSES, UNASSIGNED_CLASS_FILTER } from '@/lib/constants'
 import { formatAppDateTime } from '@/lib/date-format'
 import { getModeLabel, getStatusLabel } from '@/lib/quiz'
@@ -252,8 +253,8 @@ export default function PracticeTeacherBoard({ sessionId, initialData }: Props) 
                     {currentQuestion.type}
                   </span>
                 </div>
-                <div className="whitespace-pre-wrap rounded-xl border border-slate-200 p-4 text-slate-800">
-                  {currentQuestion.content}
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <QuestionContent content={currentQuestion.content} />
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {[
@@ -309,9 +310,7 @@ export default function PracticeTeacherBoard({ sessionId, initialData }: Props) 
                         {question.score} 分
                       </span>
                     </div>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                      {question.content}
-                    </div>
+                    <QuestionContent content={question.content} className="mt-2 text-sm" />
                   </div>
                 ))}
               </div>

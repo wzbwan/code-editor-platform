@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import QuestionContent from '@/components/QuestionContent'
 import { getModeLabel, getStatusLabel } from '@/lib/quiz'
 import {
   PRACTICE_MODES,
@@ -362,7 +363,7 @@ export default function QuizManager({
             </label>
           </div>
           <p className="mb-4 text-sm text-gray-500">
-            Excel 列：问题、类型、分值、选项A、选项B、选项C、选项D、答案、范围
+            Excel 列：问题、类型、分值、选项A、选项B、选项C、选项D、答案、范围。代码理解题可在题干中使用 ```python 代码块```。
           </p>
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <select
@@ -413,9 +414,7 @@ export default function QuizManager({
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                        {question.content}
-                      </p>
+                      <QuestionContent content={question.content} className="mt-2 text-sm" />
                     </div>
                     <button
                       type="button"

@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import QuestionContent from '@/components/QuestionContent'
+import { QUESTION_TYPES } from '@/lib/constants'
 import { formatOneDecimal } from '@/lib/point-format'
 
 interface QuestionItem {
@@ -26,7 +28,7 @@ function normalizePaperAnswer(
     return value.join(',')
   }
 
-  if (question.type === '多选题') {
+  if (question.type === QUESTION_TYPES.MULTIPLE) {
     return String(value || '')
       .split(',')
       .filter(Boolean)
@@ -104,7 +106,11 @@ export default function StudentPracticeClient() {
     onChange: (next: string | string[]) => void,
     disabled?: boolean
   ) => {
-    if (question.type === '单选题' || question.type === '判断题') {
+    if (
+      question.type === QUESTION_TYPES.SINGLE ||
+      question.type === QUESTION_TYPES.CODE_READING ||
+      question.type === QUESTION_TYPES.JUDGE
+    ) {
       return (
         <div className="space-y-3">
           {question.options?.map((option) => (
@@ -130,7 +136,7 @@ export default function StudentPracticeClient() {
       )
     }
 
-    if (question.type === '多选题') {
+    if (question.type === QUESTION_TYPES.MULTIPLE) {
       const checkedValues = Array.isArray(value)
         ? value
         : String(value || '')
@@ -169,7 +175,7 @@ export default function StudentPracticeClient() {
       )
     }
 
-    if (question.type === '简答题') {
+    if (question.type === QUESTION_TYPES.SHORT) {
       return (
         <textarea
           value={String(value || '')}
@@ -299,9 +305,9 @@ export default function StudentPracticeClient() {
               onCopy={preventProtectedTextCopy}
               onCut={preventProtectedTextCopy}
               onContextMenu={preventProtectedTextMenu}
-              className="select-none whitespace-pre-wrap text-lg text-slate-800"
+              className="select-none text-lg"
             >
-              {practice.question.content}
+              <QuestionContent content={practice.question.content} />
             </div>
             <div className="mt-6">
               {renderAnswerInput(
@@ -377,9 +383,9 @@ export default function StudentPracticeClient() {
               onCopy={preventProtectedTextCopy}
               onCut={preventProtectedTextCopy}
               onContextMenu={preventProtectedTextMenu}
-              className="select-none whitespace-pre-wrap text-lg text-slate-800"
+              className="select-none text-lg"
             >
-              {question.content}
+              <QuestionContent content={question.content} />
             </div>
             <div className="mt-6">
               {renderAnswerInput(
