@@ -154,6 +154,23 @@ export async function deleteQuestionBankItem(teacherId: string, questionId: stri
   })
 }
 
+export async function deleteQuestionBankItems(teacherId: string, questionIds: string[]) {
+  const uniqueIds = Array.from(new Set(questionIds.map((id) => id.trim()).filter(Boolean)))
+
+  if (uniqueIds.length === 0) {
+    throw new Error('请选择要删除的题目')
+  }
+
+  return prisma.questionBankItem.deleteMany({
+    where: {
+      teacherId,
+      id: {
+        in: uniqueIds,
+      },
+    },
+  })
+}
+
 export async function createQuestionBankItems(
   teacherId: string,
   rows: ParsedQuestionInput[]

@@ -203,6 +203,9 @@ export default function ExamManager({ initialData }: Props) {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">
+                支持单选、代码理解、多选、判断题；代码理解题按单选题自动判分。
+              </p>
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">

@@ -19,28 +19,32 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  submissions              Submission[]
-  assignments              Assignment[]              @relation("TeacherAssignments")
-  pointRecords             StudentPointRecord[]      @relation("StudentPointRecords")
-  operatedPointRecords     StudentPointRecord[]      @relation("OperatorPointRecords")
-  pyPointRecords           StudentPyPointRecord[]    @relation("StudentPyPointRecords")
-  operatedPyPointRecords   StudentPyPointRecord[]    @relation("OperatorPyPointRecords")
-  questionBankItems        QuestionBankItem[]        @relation("TeacherQuestionBankItems")
-  practicePapers           PracticePaper[]           @relation("TeacherPracticePapers")
-  teachingPracticeSessions PracticeSession[]         @relation("TeacherPracticeSessions")
-  studentPracticeSessions  PracticeSessionStudent[]  @relation("StudentPracticeSessions")
-  practiceResponses        PracticeResponse[]        @relation("StudentPracticeResponses")
-  teachingExams            Exam[]                    @relation("TeacherExams")
-  studentExamSessions      ExamStudentSession[]      @relation("StudentExamSessions")
-  examObjectiveResponses   ExamObjectiveResponse[]   @relation("StudentExamObjectiveResponses")
-  examProgramSubmissions   ExamProgramSubmission[]   @relation("StudentExamProgramSubmissions")
-  examEvents               ExamEvent[]               @relation("StudentExamEvents")
-  challengeProgresses      ChallengeProgress[]       @relation("StudentChallengeProgresses")
-  challengeSubmissions     ChallengeSubmission[]     @relation("StudentChallengeSubmissions")
-  challengeAttempts        ChallengeAttempt[]        @relation("StudentChallengeAttempts")
-  godotSessionBootstraps   GodotSessionBootstrap[]   @relation("UserGodotSessionBootstraps")
-  classDefenseMonsterTypes ClassDefenseMonsterType[] @relation("TeacherClassDefenseMonsterTypes")
-  pet                      StudentPet?
+  submissions                Submission[]
+  assignments                Assignment[]                @relation("TeacherAssignments")
+  pointRecords               StudentPointRecord[]        @relation("StudentPointRecords")
+  operatedPointRecords       StudentPointRecord[]        @relation("OperatorPointRecords")
+  pyPointRecords             StudentPyPointRecord[]      @relation("StudentPyPointRecords")
+  operatedPyPointRecords     StudentPyPointRecord[]      @relation("OperatorPyPointRecords")
+  questionBankItems          QuestionBankItem[]          @relation("TeacherQuestionBankItems")
+  practicePapers             PracticePaper[]             @relation("TeacherPracticePapers")
+  teachingPracticeSessions   PracticeSession[]           @relation("TeacherPracticeSessions")
+  studentPracticeSessions    PracticeSessionStudent[]    @relation("StudentPracticeSessions")
+  practiceResponses          PracticeResponse[]          @relation("StudentPracticeResponses")
+  teachingExams              Exam[]                      @relation("TeacherExams")
+  studentExamSessions        ExamStudentSession[]        @relation("StudentExamSessions")
+  examObjectiveResponses     ExamObjectiveResponse[]     @relation("StudentExamObjectiveResponses")
+  examProgramSubmissions     ExamProgramSubmission[]     @relation("StudentExamProgramSubmissions")
+  examEvents                 ExamEvent[]                 @relation("StudentExamEvents")
+  teachingTrainingSets       TrainingSet[]               @relation("TeacherTrainingSets")
+  trainingAttempts           TrainingAttempt[]           @relation("StudentTrainingAttempts")
+  trainingObjectiveResponses TrainingObjectiveResponse[] @relation("StudentTrainingObjectiveResponses")
+  trainingProgramSubmissions TrainingProgramSubmission[] @relation("StudentTrainingProgramSubmissions")
+  challengeProgresses        ChallengeProgress[]         @relation("StudentChallengeProgresses")
+  challengeSubmissions       ChallengeSubmission[]       @relation("StudentChallengeSubmissions")
+  challengeAttempts          ChallengeAttempt[]          @relation("StudentChallengeAttempts")
+  godotSessionBootstraps     GodotSessionBootstrap[]     @relation("UserGodotSessionBootstraps")
+  classDefenseMonsterTypes   ClassDefenseMonsterType[]   @relation("TeacherClassDefenseMonsterTypes")
+  pet                        StudentPet?
 }
 
 model LoginAttemptThrottle {
@@ -351,16 +355,16 @@ model PracticeResponse {
 }
 
 model Exam {
-  id              String    @id @default(cuid())
+  id              String   @id @default(cuid())
   title           String
   description     String?
   className       String
-  status          String    @default("DRAFT")
+  status          String   @default("DRAFT")
   startsAt        DateTime
   endsAt          DateTime
-  scoresPublished Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  scoresPublished Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   teacherId String
   teacher   User   @relation("TeacherExams", fields: [teacherId], references: [id], onDelete: Cascade)
@@ -378,20 +382,20 @@ model Exam {
 }
 
 model ExamObjectiveQuestion {
-  id         String   @id @default(cuid())
-  orderIndex Int
-  content    String
-  type       String
-  score      Int
-  optionA    String?
-  optionB    String?
-  optionC    String?
-  optionD    String?
-  answer     String
-  scope      String?
+  id                    String   @id @default(cuid())
+  orderIndex            Int
+  content               String
+  type                  String
+  score                 Int
+  optionA               String?
+  optionB               String?
+  optionC               String?
+  optionD               String?
+  answer                String
+  scope                 String?
   sourcePaperQuestionId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   examId String
   exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
@@ -403,19 +407,19 @@ model ExamObjectiveQuestion {
 }
 
 model ExamProgramQuestion {
-  id         String   @id @default(cuid())
-  orderIndex Int
-  chapterKey String
-  levelKey   String
+  id           String   @id @default(cuid())
+  orderIndex   Int
+  chapterKey   String
+  levelKey     String
   chapterTitle String
-  title      String
-  summary    String
-  description String
-  score      Int
-  initialCode String
-  judgeJson   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  title        String
+  summary      String
+  description  String
+  score        Int
+  initialCode  String
+  judgeJson    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   examId String
   exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
@@ -428,24 +432,24 @@ model ExamProgramQuestion {
 }
 
 model ExamStudentSession {
-  id                String    @id @default(cuid())
-  status            String    @default("IN_PROGRESS")
-  startedAt         DateTime  @default(now())
-  submittedAt       DateTime?
-  autoSubmittedAt   DateTime?
-  objectiveScore    Int       @default(0)
-  programScore      Int       @default(0)
-  totalScore        Int       @default(0)
-  questionOrder     String?
-  optionOrder       String?
-  focusLostCount    Int       @default(0)
-  firstFocusLostAt  DateTime?
-  lastSeenAt        DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  status           String    @default("IN_PROGRESS")
+  startedAt        DateTime  @default(now())
+  submittedAt      DateTime?
+  autoSubmittedAt  DateTime?
+  objectiveScore   Int       @default(0)
+  programScore     Int       @default(0)
+  totalScore       Int       @default(0)
+  questionOrder    String?
+  optionOrder      String?
+  focusLostCount   Int       @default(0)
+  firstFocusLostAt DateTime?
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  examId String
-  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId    String
+  exam      Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
   studentId String
   student   User   @relation("StudentExamSessions", fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -466,59 +470,205 @@ model ExamObjectiveResponse {
   submittedAt  DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  examId String
-  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId           String
+  exam             Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
   studentSessionId String
-  studentSession   ExamStudentSession @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
-  studentId String
-  student   User   @relation("StudentExamObjectiveResponses", fields: [studentId], references: [id], onDelete: Cascade)
-  questionId String
-  question   ExamObjectiveQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  studentSession   ExamStudentSession    @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          User                  @relation("StudentExamObjectiveResponses", fields: [studentId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         ExamObjectiveQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([examId, studentId, questionId])
   @@index([questionId, submittedAt])
 }
 
 model ExamProgramSubmission {
-  id            String   @id @default(cuid())
-  code          String
-  isPassed      Boolean
-  judgeMessage  String
-  stdout        String?
-  stderr        String?
-  awardedScore  Int      @default(0)
-  submittedAt   DateTime @default(now())
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  code         String
+  isPassed     Boolean
+  judgeMessage String
+  stdout       String?
+  stderr       String?
+  awardedScore Int      @default(0)
+  submittedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
 
-  examId String
-  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId           String
+  exam             Exam                @relation(fields: [examId], references: [id], onDelete: Cascade)
   studentSessionId String
-  studentSession   ExamStudentSession @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
-  studentId String
-  student   User   @relation("StudentExamProgramSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
-  questionId String
-  question   ExamProgramQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  studentSession   ExamStudentSession  @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          User                @relation("StudentExamProgramSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         ExamProgramQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([examId, studentId, submittedAt])
   @@index([questionId, submittedAt])
 }
 
 model ExamEvent {
-  id          String   @id @default(cuid())
-  type        String
-  payload     String?
-  occurredAt  DateTime @default(now())
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  type       String
+  payload    String?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
-  examId String
-  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId           String
+  exam             Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
   studentSessionId String
   studentSession   ExamStudentSession @relation(fields: [studentSessionId], references: [id], onDelete: Cascade)
-  studentId String
-  student   User   @relation("StudentExamEvents", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          User               @relation("StudentExamEvents", fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([examId, type, occurredAt])
   @@index([studentId, occurredAt])
+}
+
+model TrainingSet {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  className   String
+  status      String    @default("DRAFT")
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  teacherId String
+  teacher   User   @relation("TeacherTrainingSets", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  objectiveQuestions TrainingObjectiveQuestion[]
+  programQuestions   TrainingProgramQuestion[]
+  attempts           TrainingAttempt[]
+  objectiveResponses TrainingObjectiveResponse[]
+  programSubmissions TrainingProgramSubmission[]
+
+  @@index([teacherId, createdAt])
+  @@index([className, status])
+}
+
+model TrainingObjectiveQuestion {
+  id                    String   @id @default(cuid())
+  orderIndex            Int
+  content               String
+  type                  String
+  score                 Int
+  optionA               String?
+  optionB               String?
+  optionC               String?
+  optionD               String?
+  answer                String
+  scope                 String?
+  sourcePaperQuestionId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  trainingSetId String
+  trainingSet   TrainingSet @relation(fields: [trainingSetId], references: [id], onDelete: Cascade)
+
+  responses TrainingObjectiveResponse[]
+
+  @@unique([trainingSetId, orderIndex])
+  @@index([trainingSetId])
+}
+
+model TrainingProgramQuestion {
+  id           String   @id @default(cuid())
+  orderIndex   Int
+  chapterKey   String
+  levelKey     String
+  chapterTitle String
+  title        String
+  summary      String
+  description  String
+  score        Int
+  initialCode  String
+  judgeJson    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trainingSetId String
+  trainingSet   TrainingSet @relation(fields: [trainingSetId], references: [id], onDelete: Cascade)
+
+  submissions TrainingProgramSubmission[]
+
+  @@unique([trainingSetId, orderIndex])
+  @@index([trainingSetId])
+  @@index([chapterKey, levelKey])
+}
+
+model TrainingAttempt {
+  id             String    @id @default(cuid())
+  status         String    @default("IN_PROGRESS")
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  objectiveScore Int       @default(0)
+  programScore   Int       @default(0)
+  totalScore     Int       @default(0)
+  questionOrder  String?
+  optionOrder    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  trainingSetId String
+  trainingSet   TrainingSet @relation(fields: [trainingSetId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User        @relation("StudentTrainingAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+
+  objectiveResponses TrainingObjectiveResponse[]
+  programSubmissions TrainingProgramSubmission[]
+
+  @@index([studentId, createdAt])
+  @@index([trainingSetId, status])
+}
+
+model TrainingObjectiveResponse {
+  id           String   @id @default(cuid())
+  answer       String
+  isCorrect    Boolean
+  awardedScore Int
+  submittedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trainingSetId String
+  trainingSet   TrainingSet               @relation(fields: [trainingSetId], references: [id], onDelete: Cascade)
+  attemptId     String
+  attempt       TrainingAttempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User                      @relation("StudentTrainingObjectiveResponses", fields: [studentId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      TrainingObjectiveQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([trainingSetId, studentId, submittedAt])
+  @@index([questionId, submittedAt])
+}
+
+model TrainingProgramSubmission {
+  id           String   @id @default(cuid())
+  code         String
+  isPassed     Boolean
+  judgeMessage String
+  stdout       String?
+  stderr       String?
+  awardedScore Int      @default(0)
+  submittedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  trainingSetId String
+  trainingSet   TrainingSet             @relation(fields: [trainingSetId], references: [id], onDelete: Cascade)
+  attemptId     String
+  attempt       TrainingAttempt         @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User                    @relation("StudentTrainingProgramSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      TrainingProgramQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([trainingSetId, studentId, submittedAt])
+  @@index([attemptId, questionId, submittedAt])
+  @@index([questionId, submittedAt])
 }
 
 model ClassDefenseSession {
@@ -732,7 +882,7 @@ model ChallengeSubmission {
   createdAt     DateTime @default(now())
 
   studentId  String
-  student    User   @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+  student    User              @relation("StudentChallengeSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
   chapterKey String
   levelKey   String
   attemptId  String?
@@ -767,15 +917,15 @@ model ChallengeAttempt {
 }
 
 model ChallengeAttemptEvent {
-  id         String   @id @default(cuid())
+  id         String           @id @default(cuid())
   attemptId  String
   attempt    ChallengeAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   studentId  String
   chapterKey String
   levelKey   String
   type       String
-  occurredAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  occurredAt DateTime         @default(now())
+  createdAt  DateTime         @default(now())
 
   @@index([attemptId, occurredAt])
   @@index([studentId, occurredAt])

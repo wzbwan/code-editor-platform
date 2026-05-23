@@ -55,4 +55,15 @@ export const EXAM_EVENT_TYPES = {
   HEARTBEAT: 'heartbeat',
 } as const
 
+export const TRAINING_SET_STATUSES = {
+  DRAFT: 'DRAFT',
+  PUBLISHED: 'PUBLISHED',
+  ARCHIVED: 'ARCHIVED',
+} as const
+
+export const TRAINING_ATTEMPT_STATUSES = {
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETED: 'COMPLETED',
+} as const
+
 export const UNASSIGNED_CLASS_FILTER = '__UNASSIGNED__'

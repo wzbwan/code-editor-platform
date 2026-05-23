@@ -64,6 +64,7 @@ export default function QuizManager({
   const router = useRouter()
   const [questionImporting, setQuestionImporting] = useState(false)
   const [questionDeletingId, setQuestionDeletingId] = useState('')
+  const [questionBatchDeleting, setQuestionBatchDeleting] = useState(false)
   const [paperCreating, setPaperCreating] = useState(false)
   const [paperDeletingId, setPaperDeletingId] = useState('')
   const [paperImporting, setPaperImporting] = useState(false)
@@ -107,6 +108,11 @@ export default function QuizManager({
 
   const filteredQuestions = questions.filter((question) =>
     scopeFilter ? (question.scope || '') === scopeFilter : true
+  )
+  const filteredQuestionIds = filteredQuestions.map((question) => question.id)
+  const selectedQuestionIdSet = useMemo(
+    () => new Set(selectedQuestionIds),
+    [selectedQuestionIds]
   )
 
   const handleQuestionImport = async (file: File) => {
@@ -156,6 +162,46 @@ export default function QuizManager({
       router.refresh()
     } finally {
       setQuestionDeletingId('')
+    }
+  }
+
+  const handleDeleteSelectedQuestions = async () => {
+    if (selectedQuestionIds.length === 0) {
+      alert('请先选择要删除的题目')
+      return
+    }
+
+    if (
+      !window.confirm(
+        `确认删除已选 ${selectedQuestionIds.length} 道题目吗？已创建试卷中的题目不会被删除，但会断开题库来源。`
+      )
+    ) {
+      return
+    }
+
+    const deletingIds = [...selectedQuestionIds]
+    setQuestionBatchDeleting(true)
+
+    try {
+      const res = await fetch('/api/questions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: deletingIds }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || '批量删除题目失败')
+        return
+      }
+
+      setSelectedQuestionIds((current) =>
+        current.filter((id) => !deletingIds.includes(id))
+      )
+      alert(`成功删除 ${data.deletedCount ?? 0} 道题目`)
+      router.refresh()
+    } finally {
+      setQuestionBatchDeleting(false)
     }
   }
 
@@ -345,26 +391,37 @@ export default function QuizManager({
         <div className="rounded-xl bg-white p-6 shadow">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">题库管理</h2>
-            <label className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
-              {questionImporting ? '导入中...' : 'Excel 导入题库'}
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                disabled={questionImporting}
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) {
-                    void handleQuestionImport(file)
-                  }
-                  event.target.value = ''
-                }}
-              />
-            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <a
+                href="/api/questions/template"
+                className="rounded-lg border border-blue-200 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              >
+                导出题库模板
+              </a>
+              <label className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+                {questionImporting ? '导入中...' : 'Excel 导入题库'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  disabled={questionImporting}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) {
+                      void handleQuestionImport(file)
+                    }
+                    event.target.value = ''
+                  }}
+                />
+              </label>
+            </div>
           </div>
           <p className="mb-4 text-sm text-gray-500">
             Excel 列：问题、类型、分值、选项A、选项B、选项C、选项D、答案、范围。代码理解题可在题干中使用 ```python 代码块```。
           </p>
+          <div className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
+            录入代码理解题时，Excel 的“类型”列填写“代码理解题”，选项和答案按单选题填写，答案填写 A、B、C 或 D。
+          </div>
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <select
               value={scopeFilter}
@@ -381,6 +438,31 @@ export default function QuizManager({
             <span className="text-sm text-gray-500">
               共 {filteredQuestions.length} / {questions.length} 道题
             </span>
+            <span className="text-sm text-gray-500">已选 {selectedQuestionIds.length} 道</span>
+            <button
+              type="button"
+              onClick={() => setSelectedQuestionIds(filteredQuestionIds)}
+              disabled={filteredQuestionIds.length === 0}
+              className="text-sm text-blue-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+            >
+              当前筛选全选
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedQuestionIds([])}
+              disabled={selectedQuestionIds.length === 0}
+              className="text-sm text-slate-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+            >
+              清空选择
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDeleteSelectedQuestions()}
+              disabled={selectedQuestionIds.length === 0 || questionBatchDeleting}
+              className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {questionBatchDeleting ? '删除中...' : '批量删除'}
+            </button>
           </div>
           <div className="max-h-[520px] space-y-3 overflow-y-auto">
             {filteredQuestions.length === 0 ? (
@@ -396,7 +478,7 @@ export default function QuizManager({
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      checked={selectedQuestionIds.includes(question.id)}
+                      checked={selectedQuestionIdSet.has(question.id)}
                       onChange={() => handleToggleQuestion(question.id)}
                       className="mt-1 h-4 w-4"
                     />

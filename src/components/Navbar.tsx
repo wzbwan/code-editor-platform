@@ -37,6 +37,7 @@ export default function Navbar() {
                   <Link href="/teacher/challenges" className="hover:text-gray-300">代码闯关</Link>
                   <Link href="/teacher/class-defense" className="hover:text-gray-300">守护班级</Link>
                   <Link href="/teacher/pets" className="hover:text-gray-300">班级宠物</Link>
+                  <Link href="/teacher/training" className="hover:text-gray-300">训练场</Link>
                   <Link href="/teacher/exams" className="hover:text-gray-300">期末考试</Link>
                   <Link href="/teacher/questions" className="hover:text-gray-300">试题管理</Link>
                   <Link href="/teacher/students" className="hover:text-gray-300">学生管理</Link>
@@ -46,6 +47,7 @@ export default function Navbar() {
                 <>
                   <Link href="/student" className="hover:text-gray-300">我的作业</Link>
                   <Link href="/student/practice" className="hover:text-gray-300">答题练习</Link>
+                  <Link href="/student/training" className="hover:text-gray-300">训练场</Link>
                   <Link href="/student/exams" className="hover:text-gray-300">期末考试</Link>
                   <Link href="/student/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/student/profile" className="hover:text-gray-300">个人中心</Link>

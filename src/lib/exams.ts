@@ -73,11 +73,11 @@ function challengeValuesEqual(left: ChallengeValue, right: ChallengeValue): bool
   return left === right
 }
 
-function parseJudgeConfig(value: string): ChallengeJudgeConfig {
+export function parseJudgeConfig(value: string): ChallengeJudgeConfig {
   return JSON.parse(value) as ChallengeJudgeConfig
 }
 
-function buildPublicJudge(judge: ChallengeJudgeConfig) {
+export function buildPublicJudge(judge: ChallengeJudgeConfig) {
   if (judge.mode === 'VARIABLES') {
     return {
       mode: 'VARIABLES' as const,
@@ -90,7 +90,7 @@ function buildPublicJudge(judge: ChallengeJudgeConfig) {
   }
 }
 
-function judgeExamProgramExecution(input: {
+export function judgeExamProgramExecution(input: {
   judge: ChallengeJudgeConfig
   code: string
   execution: GodotChallengeExecutionInput
