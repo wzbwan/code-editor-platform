@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth-options'
-import { createTrainingSet, deleteTrainingSet } from '@/lib/training'
+import { createTrainingSet, createTrainingSets, deleteTrainingSet } from '@/lib/training'
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -13,6 +13,9 @@ export async function POST(request: NextRequest) {
   const title = String(body.title ?? '').trim()
   const description = String(body.description ?? '').trim()
   const className = String(body.className ?? '').trim()
+  const classNames = Array.isArray(body.classNames)
+    ? body.classNames.map((item: any) => String(item ?? '').trim()).filter(Boolean)
+    : []
   const paperId = String(body.paperId ?? '').trim()
   const programQuestions = Array.isArray(body.programQuestions)
     ? body.programQuestions.map((item: any) => ({
@@ -26,6 +29,23 @@ export async function POST(request: NextRequest) {
     : []
 
   try {
+    if (classNames.length > 0) {
+      const trainingSets = await createTrainingSets(session.user.id, {
+        title,
+        description,
+        classNames,
+        paperId,
+        programQuestions,
+      })
+
+      return NextResponse.json({
+        id: trainingSets[0]?.id,
+        ids: trainingSets.map((trainingSet) => trainingSet.id),
+        count: trainingSets.length,
+        trainingSets,
+      })
+    }
+
     const trainingSet = await createTrainingSet(session.user.id, {
       title,
       description,

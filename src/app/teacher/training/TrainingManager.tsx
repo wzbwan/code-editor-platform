@@ -76,9 +76,13 @@ export default function TrainingManager({ initialData }: Props) {
   const [actionId, setActionId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [className, setClassName] = useState(initialData.classOptions[0] || '')
+  const [classNames, setClassNames] = useState<string[]>(
+    initialData.classOptions[0] ? [initialData.classOptions[0]] : []
+  )
   const [paperId, setPaperId] = useState(initialData.papers[0]?.id || '')
   const [selectedPrograms, setSelectedPrograms] = useState<Record<string, boolean>>({})
+  const allClassesSelected =
+    initialData.classOptions.length > 0 && classNames.length === initialData.classOptions.length
 
   const selectedProgramRows = useMemo(() => {
     return initialData.challengeOptions.flatMap((chapter) =>
@@ -98,7 +102,7 @@ export default function TrainingManager({ initialData }: Props) {
       alert('请填写训练名称')
       return
     }
-    if (!className || !paperId) {
+    if (classNames.length === 0 || !paperId) {
       alert('请选择班级和客观题试卷')
       return
     }
@@ -111,7 +115,7 @@ export default function TrainingManager({ initialData }: Props) {
         body: JSON.stringify({
           title,
           description,
-          className,
+          classNames,
           paperId,
           programQuestions: selectedProgramRows.map((item) => ({
             chapterKey: item.chapterKey,
@@ -126,11 +130,29 @@ export default function TrainingManager({ initialData }: Props) {
         return
       }
 
-      router.push(`/teacher/training/${data.id}`)
-      router.refresh()
+      if (data.count === 1 && data.id) {
+        router.push(`/teacher/training/${data.id}`)
+      } else {
+        setTitle('')
+        setDescription('')
+        router.refresh()
+      }
     } finally {
       setCreating(false)
     }
+  }
+
+  const handleClassToggle = (item: string, checked: boolean) => {
+    setClassNames((current) => {
+      if (checked) {
+        return current.includes(item) ? current : [...current, item]
+      }
+      return current.filter((className) => className !== item)
+    })
+  }
+
+  const handleToggleAllClasses = () => {
+    setClassNames(allClassesSelected ? [] : [...initialData.classOptions])
   }
 
   const handleAction = async (trainingSet: TrainingSet, action: string) => {
@@ -200,18 +222,36 @@ export default function TrainingManager({ initialData }: Props) {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">班级</label>
-              <select
-                value={className}
-                onChange={(event) => setClassName(event.target.value)}
-                className="w-full rounded-lg border px-3 py-2"
-              >
-                {initialData.classOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item === UNASSIGNED_CLASS_FILTER ? '未分班' : item}
-                  </option>
-                ))}
-              </select>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium">班级</label>
+                <button
+                  type="button"
+                  onClick={handleToggleAllClasses}
+                  disabled={initialData.classOptions.length === 0}
+                  className="text-sm text-blue-600 hover:text-blue-700 disabled:text-slate-400"
+                >
+                  {allClassesSelected ? '清空' : '全选'}
+                </button>
+              </div>
+              <div className="max-h-40 overflow-auto rounded-lg border px-3 py-2">
+                {initialData.classOptions.length === 0 ? (
+                  <div className="py-3 text-sm text-slate-500">暂无班级</div>
+                ) : (
+                  <div className="space-y-2">
+                    {initialData.classOptions.map((item) => (
+                      <label key={item} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={classNames.includes(item)}
+                          onChange={(event) => handleClassToggle(item, event.target.checked)}
+                        />
+                        <span>{item === UNASSIGNED_CLASS_FILTER ? '未分班' : item}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-1 text-xs text-slate-400">已选 {classNames.length} 个班级</div>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">客观题试卷</label>

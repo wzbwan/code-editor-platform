@@ -227,6 +227,40 @@ export async function createTrainingSet(
   })
 }
 
+export async function createTrainingSets(
+  teacherId: string,
+  input: {
+    title: string
+    description?: string
+    classNames: string[]
+    paperId: string
+    programQuestions: Array<{ chapterKey: string; levelKey: string; score?: number }>
+  }
+) {
+  const classNames = Array.from(
+    new Set(input.classNames.map((className) => className.trim()).filter(Boolean))
+  )
+
+  if (classNames.length === 0) {
+    throw new Error('请选择班级')
+  }
+
+  const trainingSets = []
+  for (const className of classNames) {
+    trainingSets.push(
+      await createTrainingSet(teacherId, {
+        title: input.title,
+        description: input.description,
+        className,
+        paperId: input.paperId,
+        programQuestions: input.programQuestions,
+      })
+    )
+  }
+
+  return trainingSets
+}
+
 export async function applyTeacherTrainingAction(
   teacherId: string,
   trainingSetId: string,

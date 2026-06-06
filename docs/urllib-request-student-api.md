@@ -38,7 +38,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 import json
 
-base_url = "http://localhost:3000/api/urllib/pet"
+base_url = "https://python.zengbao.wang/api/urllib/pet"
 params = urlencode({"studentNo": "20240001", "password": "123456"})
 
 with urlopen(f"{base_url}?{params}") as response:
