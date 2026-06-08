@@ -36,9 +36,14 @@ export default async function TeacherChallengesPage({ searchParams }: Props) {
             先选择班级，再进入某个闯关任务查看关卡通关情况和学生完成详情。
           </p>
         </div>
-        <Link href="/teacher" className="text-sm text-blue-600 hover:underline">
-          返回教师首页
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/teacher/challenges/designer" className="text-sm text-emerald-600 hover:underline">
+            设计代码闯关
+          </Link>
+          <Link href="/teacher" className="text-sm text-blue-600 hover:underline">
+            返回教师首页
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">

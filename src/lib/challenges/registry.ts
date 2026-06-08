@@ -1,4 +1,6 @@
+import { campusStudyDataManagerChapter } from '@/lib/challenges/chapters/campus-study-data-manager'
 import { fileArchiveStationChapter } from '@/lib/challenges/chapters/file-archive-station'
+import { lambdaListLabChapter } from '@/lib/challenges/chapters/lambda-list-lab'
 import { listMilkTeaChapter } from '@/lib/challenges/chapters/list-milk-tea'
 import { robotRepairStationChapter } from '@/lib/challenges/chapters/robot-repair-station'
 import { sequenceSetCampChapter } from '@/lib/challenges/chapters/sequence-set-camp'
@@ -11,6 +13,8 @@ const chapters = [
   spaceMarketAdventureChapter,
   robotRepairStationChapter,
   fileArchiveStationChapter,
+  campusStudyDataManagerChapter,
+  lambdaListLabChapter,
 ] satisfies ChallengeChapterDefinition[]
 
 export function getAllChallengeChapters() {
