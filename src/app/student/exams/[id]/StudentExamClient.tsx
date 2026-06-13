@@ -33,11 +33,7 @@ interface ProgramQuestion {
   publicJudge:
     | { mode: 'OUTPUT' }
     | { mode: 'VARIABLES'; variableNames: string[] }
-  latestJudgeMessage: string | null
-  latestStdout: string | null
-  latestStderr: string | null
   latestSubmittedAt: string | null
-  isPassed: boolean
 }
 
 interface Props {
@@ -500,7 +496,7 @@ export default function StudentExamClient({ examId, initialData }: Props) {
         return
       }
 
-      setMessage(result.message || '程序题已提交')
+      setMessage('程序题已提交')
       await refresh()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '程序题提交失败')
@@ -745,7 +741,9 @@ export default function StudentExamClient({ examId, initialData }: Props) {
                   }`}
                 >
                   <div className="font-medium">第 {index + 1} 题：{question.title}</div>
-                  <div className="mt-1 text-xs opacity-75">{question.score} 分 {question.isPassed ? '/ 已通过' : ''}</div>
+                  <div className="mt-1 text-xs opacity-75">
+                    {question.score} 分 {question.latestSubmittedAt ? '/ 已提交' : ''}
+                  </div>
                 </button>
               ))}
             </div>
@@ -760,9 +758,9 @@ export default function StudentExamClient({ examId, initialData }: Props) {
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-700">
                       {activeProgram.score} 分
                     </span>
-                    {activeProgram.isPassed && (
+                    {activeProgram.latestSubmittedAt && (
                       <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700">
-                        已通过
+                        已提交
                       </span>
                     )}
                   </div>
@@ -770,10 +768,9 @@ export default function StudentExamClient({ examId, initialData }: Props) {
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
                     {activeProgram.description}
                   </p>
-                  {activeProgram.latestJudgeMessage && (
+                  {activeProgram.latestSubmittedAt && (
                     <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-                      最近提交：{activeProgram.latestJudgeMessage}
-                      {activeProgram.latestSubmittedAt ? ` / ${formatAppDateTime(activeProgram.latestSubmittedAt)}` : ''}
+                      最近提交：已提交 / {formatAppDateTime(activeProgram.latestSubmittedAt)}
                     </div>
                   )}
                 </div>

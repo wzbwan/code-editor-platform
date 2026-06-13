@@ -759,6 +759,11 @@ export async function getStudentExamView(studentId: string, examId: string) {
     }),
     prisma.examProgramSubmission.findMany({
       where: { examId, studentId },
+      select: {
+        questionId: true,
+        code: true,
+        submittedAt: true,
+      },
       orderBy: { submittedAt: 'desc' },
     }),
   ])
@@ -786,13 +791,9 @@ export async function getStudentExamView(studentId: string, examId: string) {
     })
 
   const latestProgramSubmissionByQuestionId = new Map<string, (typeof latestProgramSubmissions)[number]>()
-  const passedProgramQuestionIds = new Set<string>()
   for (const submission of latestProgramSubmissions) {
     if (!latestProgramSubmissionByQuestionId.has(submission.questionId)) {
       latestProgramSubmissionByQuestionId.set(submission.questionId, submission)
-    }
-    if (submission.isPassed) {
-      passedProgramQuestionIds.add(submission.questionId)
     }
   }
 
@@ -809,11 +810,7 @@ export async function getStudentExamView(studentId: string, examId: string) {
       score: question.score,
       initialCode: latestSubmission?.code || question.initialCode,
       publicJudge: buildPublicJudge(judge),
-      latestJudgeMessage: latestSubmission?.judgeMessage || null,
-      latestStdout: latestSubmission?.stdout || null,
-      latestStderr: latestSubmission?.stderr || null,
       latestSubmittedAt: latestSubmission?.submittedAt || null,
-      isPassed: passedProgramQuestionIds.has(question.id),
     }
   })
 
@@ -830,7 +827,14 @@ export async function getStudentExamView(studentId: string, examId: string) {
     student,
     canEnter: true,
     isOpen,
-    session: freshStudentSession,
+    session: exam.scoresPublished
+      ? freshStudentSession
+      : {
+          ...freshStudentSession,
+          objectiveScore: null,
+          programScore: null,
+          totalScore: null,
+        },
     objectiveQuestions: orderedObjectiveQuestions,
     programQuestions,
   }
@@ -993,12 +997,10 @@ export async function submitExamProgramAnswer(
       },
     })
 
-    const score = await recalculateStudentExamScoreWithTx(tx, { examId, studentId })
+    await recalculateStudentExamScoreWithTx(tx, { examId, studentId })
 
     return {
-      ...judgeResult,
-      awardedScore,
-      score,
+      message: '程序题已提交',
     }
   })
 }
