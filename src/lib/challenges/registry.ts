@@ -3,6 +3,7 @@ import { fileArchiveStationChapter } from '@/lib/challenges/chapters/file-archiv
 import { finalExamDataCenterChapter } from '@/lib/challenges/chapters/final-exam-data-center'
 import { lambdaListLabChapter } from '@/lib/challenges/chapters/lambda-list-lab'
 import { listMilkTeaChapter } from '@/lib/challenges/chapters/list-milk-tea'
+import { policeDutyDataCenterChapter } from '@/lib/challenges/chapters/police-duty-data-center'
 import { robotRepairStationChapter } from '@/lib/challenges/chapters/robot-repair-station'
 import { sequenceSetCampChapter } from '@/lib/challenges/chapters/sequence-set-camp'
 import { spaceMarketAdventureChapter } from '@/lib/challenges/chapters/space-market-adventure'
@@ -16,6 +17,7 @@ const chapters = [
   fileArchiveStationChapter,
   campusStudyDataManagerChapter,
   lambdaListLabChapter,
+  policeDutyDataCenterChapter,
   finalExamDataCenterChapter,
 ] satisfies ChallengeChapterDefinition[]
 
