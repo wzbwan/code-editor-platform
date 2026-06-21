@@ -678,6 +678,11 @@ export async function getStudentActiveExam(studentId: string) {
       id: true,
       title: true,
       endsAt: true,
+      studentSessions: {
+        where: { studentId },
+        select: { submittedAt: true },
+        take: 1,
+      },
     },
   })
 }

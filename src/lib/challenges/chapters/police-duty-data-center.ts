@@ -45,31 +45,22 @@ export const policeDutyDataCenterChapter: ChallengeChapterDefinition = {
       key: 'create-case-card',
       title: '第1关：填写接警单',
       summary: '补全基础变量，并整理成接警单字典。',
-      description: '任务：请补全代码，创建一张接警单。警员姓名 officer 为 \'李明\'；派出所 station 为 \'青城派出所\'；警情编号 case_id 为 \'NM-2026-001\'；风险分 risk_score 为整数 3；是否紧急 is_urgent 为 False。最后保持 case_card 字典内容正确。',
+      description: '任务：请补全代码，创建一张接警单。警情编号 case_id 为 \'NM-2026-001\'；风险分 risk_score 为整数 3。最后保持 case_card 字典内容正确。',
       points: 2,
-      initialCode: `officer = None
-station = None
-case_id = None
+      initialCode: `case_id = None
 risk_score = None
-is_urgent = None
 
 case_card = {
-    'officer': officer,
-    'station': station,
     'case_id': case_id,
     'risk_score': risk_score,
-    'is_urgent': is_urgent,
 }
 `,
       judge: {
         mode: 'VARIABLES',
         expectedVariables: {
           case_card: {
-            officer: '李明',
-            station: '青城派出所',
             case_id: 'NM-2026-001',
             risk_score: 3,
-            is_urgent: false,
           },
         },
       },
@@ -77,44 +68,50 @@ case_card = {
     {
       key: 'prepare-patrol-route',
       title: '第2关：准备巡逻路线',
-      summary: '补全列表、元组、索引取值和长度统计。',
-      description: '任务：请补全代码。patrol_points 是列表，依次为 \'北门\'、\'东门\'、\'南门\'、\'西门\'；fixed_pair 是元组，内容为 \'110接警台\' 和 \'视频巡查岗\'；first_point 保存 patrol_points 的第一个点位；last_point 保存最后一个点位。',
+      summary: '补全列表、索引取值和长度统计。',
+      description: '任务：请补全代码。patrol_points 是列表，依次为 \'gate-n\'、\'gate-e\'、\'gate-s\'、\'gate-w\'。',
       points: 2,
       initialCode: `patrol_points = None
-fixed_pair = None
+`,
+      judge: {
+        mode: 'VARIABLES',
+        expectedVariables: {
+          patrol_points: [
+            'gate-n',
+            'gate-e',
+            'gate-s',
+            'gate-w',
+          ],
+        },
+      },
+    },
+    {
+      key: 'prepare-patrol-route2',
+      title: '第3关：锁定巡逻路线',
+      summary: '列表索引取值。',
+      description: '任务：请补全代码。patrol_points 是列表，依次为 \'gate-n\'、\'gate-e\'、\'gate-s\'、\'gate-w\'；first_point 保存 patrol_points 的第一个点位；last_point 保存最后一个点位。',
+      points: 2,
+      initialCode: `patrol_points = ['gate-n', 'gate-e', 'gate-s', 'gate-w']
 first_point = None
 last_point = None
 `,
       judge: {
         mode: 'VARIABLES',
         expectedVariables: {
-          patrol_points: [
-            '北门',
-            '东门',
-            '南门',
-            '西门',
-          ],
-          fixed_pair: [
-            '110接警台',
-            '视频巡查岗',
-          ],
-          first_point: '北门',
-          last_point: '西门',
+          first_point: 'gate-n',
+          last_point: 'gate-w',
         },
       },
     },
     {
       key: 'clean-alarm-text',
-      title: '第3关：清洗接警文本',
+      title: '第4关：清洗接警文本',
       summary: '使用 split 处理一条接警文本。',
-      description: '任务：raw_alarm 中保存了一条接警文本。请保存 parts 为按 \'-\' 拆分后的列表；station 为派出所名称；case_type 为警情类型；status 为原始状态。',
-      points: 2,
+      description: '任务：raw_alarm 中保存了一条接警文本。请保存 parts 为按 \'-\' 拆分后的列表。',
+      points: 3,
       initialCode: `raw_alarm = '110-青城派出所-噪音警情-已接警'
-
+# 提示：字符串切割方法为 字符串.split(分隔符)
 parts = None
-station = None
-case_type = None
-status = None
 `,
       judge: {
         mode: 'VARIABLES',
@@ -125,21 +122,41 @@ status = None
             '噪音警情',
             '已接警',
           ],
-          station: '青城派出所',
-          case_type: '噪音警情',
-          status: '已接警',
+        },
+      },
+    },
+
+    {
+      key: 'fix-dispatch-queue',
+      title: '第5关：修复出警队列1',
+      summary: '列表增改代码，得到正确出警队列。',
+      description: '请完成队列整理：在队尾追加 \'巡逻D组\'。',
+      points: 3,
+      initialCode: `queue = ['巡逻A组', '巡逻B组', '巡逻C组']
+
+# 提示：列表常用的方法有 append, extend, insert, pop, remove, sort等
+
+`,
+      judge: {
+        mode: 'VARIABLES',
+        expectedVariables: {
+          queue: [
+            '巡逻A组',
+            '巡逻B组',
+            '巡逻C组',
+            '巡逻D组',
+          ],
         },
       },
     },
     {
-      key: 'fix-dispatch-queue',
-      title: '第4关：修复出警队列',
+      key: 'fix-dispatch-queue2',
+      title: '第6关：修复出警队列2',
       summary: '列表增改代码，得到正确出警队列。',
-      description: '请完成队列整理：在队尾追加 \'巡逻D组\'；把 \'巡逻C组\' 改成 \'视频巡查组\'。',
+      description: '请完成队列整理：把 \'巡逻C组\' 改成 \'视频巡查组\'。',
       points: 3,
-      initialCode: `queue = ['巡逻A组', '巡逻B组', '巡逻C组']
-
-# 提示：列表常用的方法有append, extend, insert, pop, remove, sort等
+      initialCode: `queue = ['巡逻A组', '巡逻B组', '巡逻C组', '巡逻D组']
+# 提示：列表可通过索引获取或修改元素
 
 `,
       judge: {
@@ -156,19 +173,19 @@ status = None
     },
     {
       key: 'fix-risk-levels',
-      title: '第5关：修复预警等级',
+      title: '第7关：修复预警等级',
       summary: '修复分支边界条件和列表追加内容。',
-      description: '下面代码有错误。请修复后，让每个分数得到正确预警等级。规则：90 分及以上为 \'红色预警\'；70 到 89 为 \'橙色关注\'；40 到 69 为 \'黄色观察\'；40 以下为 \'绿色正常\'。最后保存 risk_levels。',
-      points: 3,
+      description: '下面代码有错误。请修复。规则：90 分及以上为 \'红色预警\'；70 到 89 为 \'橙色关注\'；40 到 69 为 \'黄色观察\'；40 以下为 \'绿色正常\'。最后保存风险等级列表 risk_levels。',
+      points: 4,
       initialCode: `scores = [95, 70, 40, 12, 90]
 risk_levels = []
 
 for score in scores:
-    if score > 90:
+    if score >= 90:
         level = '红色预警'
-    elif score > 70:
+    elif score >= 70:
         level = '橙色关注'
-    elif score > 40:
+    elif score >= 40:
         level = '黄色观察'
     else:
         level = '绿色正常'
@@ -189,19 +206,18 @@ for score in scores:
     },
     {
       key: 'fix-valid-call-types',
-      title: '第6关：修复警情类型统计',
+      title: '第8关：修复警情类型统计',
       summary: '过滤空值和重复项，统计有效警情类型。',
-      description: '下面代码要统计有效警情类型。空字符串和 None 不计入有效警情；重复类型只保留第一次出现。请修复代码，保存 valid_types 和 valid_count。',
-      points: 3,
-      initialCode: `call_types = ['噪音', '走失', '噪音', '', '交通', None, '求助', '走失']
+      description: '下面代码要统计有效警情类型。空字符串和 None 不计入有效警情。请修复代码，保存 valid_types 和 valid_count。',
+      points: 4,
+      initialCode: `call_types = ['噪音', '走失', '诈骗', '', '交通', None, '求助', '盗窃']
 
 valid_types = []
 valid_count = 0
 
 for call_type in call_types:
-    if call_type == '' and call_type == None:
-        continue
-    
+    # 请在此处补充代码，使结果正确
+
     valid_types.append(call_type)
     valid_count = valid_count + 1
 `,
@@ -211,18 +227,20 @@ for call_type in call_types:
           valid_types: [
             '噪音',
             '走失',
+            '诈骗',
             '交通',
             '求助',
+            '盗窃',
           ],
-          valid_count: 4,
+          valid_count: 6,
         },
       },
     },
     {
       key: 'count-incident-status',
-      title: '第7关：统计警情状态',
+      title: '第9关：统计警情状态',
       summary: '用循环和分支统计已处置数量、待跟进编号和涉及人数。',
-      description: '任务：incidents 中每个字典是一条警情。请用循环完成：handled_count 为 status 等于 \'已处置\' 的数量；pending_ids 为 status 等于 \'待跟进\' 的警情编号列表，按出现顺序保存；total_people 为所有警情涉及人数合计。',
+      description: '任务：incidents 中每个字典是一条警情。请用循环完成：pending_ids 为 status 等于 \'待跟进\' 的警情编号列表，按出现顺序保存；total_people 为所有警情涉及人数合计。',
       points: 4,
       initialCode: `incidents = [
     {'id': 'J001', 'type': '求助', 'status': '已处置', 'people': 2},
@@ -231,16 +249,14 @@ for call_type in call_types:
     {'id': 'J004', 'type': '走失', 'status': '待跟进', 'people': 1},
 ]
 
-handled_count = 0
 pending_ids = []
 total_people = 0
 
-# 请用循环保存 handled_count、pending_ids、total_people
+# 请用循环保存 pending_ids、total_people
 `,
       judge: {
         mode: 'VARIABLES',
         expectedVariables: {
-          handled_count: 2,
           pending_ids: [
             'J002',
             'J004',
@@ -251,10 +267,10 @@ total_people = 0
     },
     {
       key: 'sort-alert-board',
-      title: '第8关：整理预警看板',
+      title: '第10关：整理预警看板',
       summary: '使用列表推导式和 lambda 排序整理预警数据。',
       description: '任务：alerts 中每个字典是一条预警。请完成：high_alert_ids 为 score 大于等于 80 的编号列表，按原顺序保存；sorted_alert_ids 为按 score 从高到低排序后的编号列表。建议使用列表推导式和 sorted(..., key=lambda item: item[\'score\'], reverse=True)。',
-      points: 4,
+      points: 5,
       initialCode: `alerts = [
     {'id': 'A01', 'area': '北区', 'score': 82},
     {'id': 'A02', 'area': '南区', 'score': 57},
@@ -281,185 +297,38 @@ total_people = 0
       },
     },
     {
-      key: 'build-dispatch-plan',
-      title: '第9关：生成处警建议',
-      summary: '定义函数，根据警情类型、人数和紧急标记返回处警建议。',
-      description: '任务：定义函数 build_plan(category, people, urgent=False)。规则：如果 urgent 为 True 或 people 大于等于 5，返回 {\'level\': \'一级\', \'action\': \'立即增援\'}；否则如果 category 是 \'纠纷\' 或 \'交通事故\'，或 people 大于等于 3，返回 {\'level\': \'二级\', \'action\': \'民警到场\'}；其他情况返回 {\'level\': \'三级\', \'action\': \'电话回访\'}。最后按初始代码中的三次调用保存 plan_a、plan_b、plan_c。',
-      points: 4,
-      initialCode: `# 请定义 build_plan(category, people, urgent=False)
-
-plan_a = build_plan('走失', 1, urgent=True)
-plan_b = build_plan('纠纷', 3)
-plan_c = build_plan('咨询', 1)
-`,
-      judge: {
-        mode: 'VARIABLES',
-        expectedVariables: {
-          plan_a: {
-            level: '一级',
-            action: '立即增援',
-          },
-          plan_b: {
-            level: '二级',
-            action: '民警到场',
-          },
-          plan_c: {
-            level: '三级',
-            action: '电话回访',
-          },
-        },
-      },
-    },
-    {
-      key: 'aggregate-area-cases',
-      title: '第10关：汇总辖区警情',
-      summary: '使用 for 循环把字符串列表转换为字典列表。',
-      description: '任务：raw_incidents 中每条数据都是字符串，格式为 "编号-辖区-警情类型-风险分-状态"。请使用 for 循环遍历 raw_incidents，先用 split("-") 拆分字段，再把每条警情整理成字典，最后保存到 incidents 列表中。每个字典包含 id、area、type、score、status 五个键，其中 score 要转换为整数。',
-      points: 5,
-      initialCode: `raw_incidents = [
-    'J001-北区-纠纷-82-已处置',
-    'J002-北区-噪音-55-待跟进',
-    'J003-南区-走失-96-待跟进',
-    'J004-北区-纠纷-76-已处置',
-    'J005-南区-求助-64-待跟进',
-    'J006-东区-交通-91-待跟进',
-]
-
-incidents = []
-
-# 请用 for 循环遍历 raw_incidents，把每条字符串转换成字典后加入 incidents
-`,
-      judge: {
-        mode: 'VARIABLES',
-        expectedVariables: {
-          incidents: [
-            {
-              id: 'J001',
-              area: '北区',
-              type: '纠纷',
-              score: 82,
-              status: '已处置',
-            },
-            {
-              id: 'J002',
-              area: '北区',
-              type: '噪音',
-              score: 55,
-              status: '待跟进',
-            },
-            {
-              id: 'J003',
-              area: '南区',
-              type: '走失',
-              score: 96,
-              status: '待跟进',
-            },
-            {
-              id: 'J004',
-              area: '北区',
-              type: '纠纷',
-              score: 76,
-              status: '已处置',
-            },
-            {
-              id: 'J005',
-              area: '南区',
-              type: '求助',
-              score: 64,
-              status: '待跟进',
-            },
-            {
-              id: 'J006',
-              area: '东区',
-              type: '交通',
-              score: 91,
-              status: '待跟进',
-            },
-          ],
-        },
-      },
-    },
-    {
       key: 'build-daily-duty-report',
       title: '第11关：生成民警考核结果',
       summary: '根据民警考核数据，计算综合成绩并划分等级。',
-      description: '任务：officers 中每个字典保存一名民警的考核数据，包括姓名、年龄、性别、体能成绩、理论成绩、射击成绩。请使用循环生成新列表 result。result 中每个字典包含：name、age、gender、total_score、level。total_score 为体能成绩、理论成绩、射击成绩三项之和；level 根据综合成绩划分：270 分及以上为 "优秀"，240 到 269 分为 "良好"，240 分以下为 "不合格"。',
+      description: '任务：officers 中每个元素是一名民警的考核数据，包括(姓名, 体能成绩, 理论成绩, 射击成绩)。请生成新列表 result。result 中的元素是元组，包含：(姓名,总分,评价等级)。总分为体能成绩、理论成绩、射击成绩三项之和；评价等级 根据综合成绩划分：270 分及以上为 "优秀"，240 到 269 分为 "良好"，240 分以下为 "不合格"。',
       points: 5,
       initialCode: `officers = [
-    {'name': '李明', 'age': 28, 'gender': '男', 'physical': 92, 'theory': 88, 'shooting': 91},
-    {'name': '王芳', 'age': 31, 'gender': '女', 'physical': 85, 'theory': 90, 'shooting': 86},
-    {'name': '张伟', 'age': 35, 'gender': '男', 'physical': 78, 'theory': 82, 'shooting': 80},
-    {'name': '赵敏', 'age': 26, 'gender': '女', 'physical': 95, 'theory': 94, 'shooting': 96},
-    {'name': '刘强', 'age': 40, 'gender': '男', 'physical': 70, 'theory': 76, 'shooting': 72},
-    {'name': '陈晨', 'age': 29, 'gender': '女', 'physical': 88, 'theory': 84, 'shooting': 83},
-    {'name': '孙磊', 'age': 33, 'gender': '男', 'physical': 60, 'theory': 68, 'shooting': 65},
-    {'name': '周静', 'age': 27, 'gender': '女', 'physical': 90, 'theory': 92, 'shooting': 89},
+    ('李明', 92, 88, 91),
+    ('王芳', 85, 90, 86),
+    ('张伟', 78, 82, 80),
+    ('赵敏', 95, 94, 96),
+    ('刘强', 70, 76, 72),
+    ('陈晨', 88, 84, 83),
+    ('孙磊', 60, 68, 65),
+    ('周静', 90, 92, 89),
 ]
 
 result = []
 
-# 请用循环生成 result，每项包含 name、age、gender、total_score、level
+# 请用循环生成 result，每项包含 (姓名,总分,评价等级)
 `,
       judge: {
         mode: 'VARIABLES',
         expectedVariables: {
           result: [
-            {
-              name: '李明',
-              age: 28,
-              gender: '男',
-              total_score: 271,
-              level: '优秀',
-            },
-            {
-              name: '王芳',
-              age: 31,
-              gender: '女',
-              total_score: 261,
-              level: '良好',
-            },
-            {
-              name: '张伟',
-              age: 35,
-              gender: '男',
-              total_score: 240,
-              level: '良好',
-            },
-            {
-              name: '赵敏',
-              age: 26,
-              gender: '女',
-              total_score: 285,
-              level: '优秀',
-            },
-            {
-              name: '刘强',
-              age: 40,
-              gender: '男',
-              total_score: 218,
-              level: '不合格',
-            },
-            {
-              name: '陈晨',
-              age: 29,
-              gender: '女',
-              total_score: 255,
-              level: '良好',
-            },
-            {
-              name: '孙磊',
-              age: 33,
-              gender: '男',
-              total_score: 193,
-              level: '不合格',
-            },
-            {
-              name: '周静',
-              age: 27,
-              gender: '女',
-              total_score: 271,
-              level: '优秀',
-            },
+            ['李明', 271, '优秀'],
+            ['王芳', 261, '良好'],
+            ['张伟', 240, '良好'],
+            ['赵敏', 285, '优秀'],
+            ['刘强', 218, '不合格'],
+            ['陈晨', 255, '良好'],
+            ['孙磊', 193, '不合格'],
+            ['周静', 271, '优秀'],
           ],
         },
       },

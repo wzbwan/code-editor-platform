@@ -20,17 +20,6 @@ export default function ActivePracticeWatcher() {
         router.push('/student/practice')
         return
       }
-
-      if (pathname?.startsWith('/student/exams')) {
-        return
-      }
-
-      const examRes = await fetch('/api/student-exams/active')
-      const examData = await examRes.json()
-
-      if (examRes.ok && examData.active && examData.exam?.id) {
-        router.push(`/student/exams/${examData.exam.id}`)
-      }
     }
 
     void poll()

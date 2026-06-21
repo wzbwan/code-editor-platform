@@ -5,6 +5,7 @@ import { getStudentActiveExam } from '@/lib/exams'
 export default async function StudentExamsPage() {
   const student = await requireStudent()
   const activeExam = await getStudentActiveExam(student.id)
+  const submittedAt = activeExam?.studentSessions[0]?.submittedAt
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -18,12 +19,22 @@ export default async function StudentExamsPage() {
                 当前有进行中的考试，请进入考试页面完成作答。
               </p>
             </div>
-            <Link
-              href={`/student/exams/${activeExam.id}`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-            >
-              进入考试
-            </Link>
+            {submittedAt ? (
+              <button
+                type="button"
+                disabled
+                className="rounded-lg bg-slate-200 px-4 py-2 text-slate-500"
+              >
+                已提交
+              </button>
+            ) : (
+              <Link
+                href={`/student/exams/${activeExam.id}`}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              >
+                进入考试
+              </Link>
+            )}
           </div>
         ) : (
           <div className="py-12 text-center text-sm text-slate-500">
