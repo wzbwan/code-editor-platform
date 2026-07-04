@@ -97,7 +97,13 @@ export default function ExamTeacherBoard({ examId, initialData }: Props) {
               href={`/api/exams/${examId}/export`}
               className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-900"
             >
-              导出 CSV
+              导出成绩 CSV
+            </a>
+            <a
+              href={`/api/exams/${examId}/program-submissions/export`}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+            >
+              导出程序源码 ZIP
             </a>
           </div>
         </div>
