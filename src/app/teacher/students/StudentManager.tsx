@@ -103,6 +103,9 @@ export default function StudentManager({
   const filteredStudents = students.filter((student) =>
     matchesStudentQuery(student, query)
   )
+  const exportQuery = query.trim()
+    ? `?${new URLSearchParams({ query: query.trim() }).toString()}`
+    : ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -424,8 +427,20 @@ export default function StudentManager({
             disabled={importing}
           />
         </label>
+        <a
+          href={`/api/users/export${exportQuery}`}
+          className="rounded-lg bg-violet-600 px-4 py-2 text-white hover:bg-violet-700"
+        >
+          导出学生积分
+        </a>
+        <a
+          href={`/api/challenges/points-export${exportQuery}`}
+          className="rounded-lg bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
+        >
+          导出闯关积分明细
+        </a>
         <span className="text-sm text-gray-500">
-          首行需包含：姓名 / 用户名，新增账号需密码，可选班级；已存在用户名会回填班级
+          首行需包含：姓名 / 用户名，新增账号需密码，可选班级；导出会跟随当前检索结果
         </span>
       </div>
 
