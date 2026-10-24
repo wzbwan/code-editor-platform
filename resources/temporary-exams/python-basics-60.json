@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "title": "Python 入门阶段测试",
+  "durationMinutes": 60,
+  "totalScore": 100,
+  "instructions": "闭卷笔试。所有程序均按 Python 3 解释。可使用课内讲过的内置函数。不考异常处理、列表、文件或面向对象。输入均符合题目约定。代码需体现正确缩进。\n建议用时：选择题8分钟，代码阅读12分钟，填空与改错12分钟，编程题28分钟。",
+  "sections": [
+    {
+      "id": "single",
+      "title": "一、单项选择题",
+      "description": "5题，每题4分，共20分。"
+    },
+    {
+      "id": "reading",
+      "title": "二、代码阅读题",
+      "description": "4题，每题5分，共20分。写出完整输出，注意顺序和换行。"
+    },
+    {
+      "id": "fill",
+      "title": "三、填空与改错",
+      "description": "4题，每题5分，共20分。涉及代码编写和改错的题目由教师评分。"
+    },
+    {
+      "id": "program",
+      "title": "四、编程题",
+      "description": "2题，每题20分，共40分。代码需体现正确缩进，由教师评分。"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "number": 1,
+      "sectionId": "single",
+      "type": "SINGLE",
+      "grading": "AUTO",
+      "score": 4,
+      "content": "执行 x = input()，用户输入 12 后，x 的类型是（　）。",
+      "options": [
+        {
+          "key": "A",
+          "text": "int"
+        },
+        {
+          "key": "B",
+          "text": "float"
+        },
+        {
+          "key": "C",
+          "text": "str"
+        },
+        {
+          "key": "D",
+          "text": "bool"
+        }
+      ],
+      "answers": [
+        "C"
+      ]
+    },
+    {
+      "id": "q2",
+      "number": 2,
+      "sectionId": "single",
+      "type": "SINGLE",
+      "grading": "AUTO",
+      "score": 4,
+      "content": "表达式 7 // 2 + 7 % 2 的结果是（　）。",
+      "options": [
+        {
+          "key": "A",
+          "text": "3"
+        },
+        {
+          "key": "B",
+          "text": "4"
+        },
+        {
+          "key": "C",
+          "text": "4.5"
+        },
+        {
+          "key": "D",
+          "text": "5"
+        }
+      ],
+      "answers": [
+        "B"
+      ]
+    },
+    {
+      "id": "q3",
+      "number": 3,
+      "sectionId": "single",
+      "type": "SINGLE",
+      "grading": "AUTO",
+      "score": 4,
+      "content": "判断变量 score 是否等于60，正确的表达式是（　）。",
+      "options": [
+        {
+          "key": "A",
+          "text": "score = 60"
+        },
+        {
+          "key": "B",
+          "text": "score == 60"
+        },
+        {
+          "key": "C",
+          "text": "score != 60"
+        },
+        {
+          "key": "D",
+          "text": "score >= 60"
+        }
+      ],
+      "answers": [
+        "B"
+      ]
+    },
+    {
+      "id": "q4",
+      "number": 4,
+      "sectionId": "single",
+      "type": "SINGLE",
+      "grading": "AUTO",
+      "score": 4,
+      "content": "range(2, 8, 2) 依次产生哪些值（　）。",
+      "options": [
+        {
+          "key": "A",
+          "text": "2, 4, 6"
+        },
+        {
+          "key": "B",
+          "text": "2, 4, 6, 8"
+        },
+        {
+          "key": "C",
+          "text": "0, 2, 4, 6"
+        },
+        {
+          "key": "D",
+          "text": "2, 3, 4, 5, 6, 7"
+        }
+      ],
+      "answers": [
+        "A"
+      ]
+    },
+    {
+      "id": "q5",
+      "number": 5,
+      "sectionId": "single",
+      "type": "SINGLE",
+      "grading": "AUTO",
+      "score": 4,
+      "content": "函数执行完毕但没有执行带值的 return，返回（　）。",
+      "options": [
+        {
+          "key": "A",
+          "text": "0"
+        },
+        {
+          "key": "B",
+          "text": "空字符串"
+        },
+        {
+          "key": "C",
+          "text": "False"
+        },
+        {
+          "key": "D",
+          "text": "None"
+        }
+      ],
+      "answers": [
+        "D"
+      ]
+    },
+    {
+      "id": "q6",
+      "number": 6,
+      "sectionId": "reading",
+      "type": "OUTPUT",
+      "grading": "AUTO",
+      "score": 5,
+      "content": "变量与字符串",
+      "code": "a = 3\nb = \"4\"\nprint(a + int(b))\nprint(b * 2)",
+      "answers": [
+        "7\n44"
+      ]
+    },
+    {
+      "id": "q7",
+      "number": 7,
+      "sectionId": "reading",
+      "type": "OUTPUT",
+      "grading": "AUTO",
+      "score": 5,
+      "content": "分支判断",
+      "code": "score = 60\nif score > 90:\n    print(\"A\")\nelif score >= 60:\n    print(\"B\")\nelse:\n    print(\"C\")",
+      "answers": [
+        "B"
+      ]
+    },
+    {
+      "id": "q8",
+      "number": 8,
+      "sectionId": "reading",
+      "type": "OUTPUT",
+      "grading": "AUTO",
+      "score": 5,
+      "content": "循环累加",
+      "code": "total = 0\nfor i in range(1, 5):\n    if i % 2 == 0:\n        total += i\nprint(total)",
+      "answers": [
+        "6"
+      ]
+    },
+    {
+      "id": "q9",
+      "number": 9,
+      "sectionId": "reading",
+      "type": "OUTPUT",
+      "grading": "AUTO",
+      "score": 5,
+      "content": "函数返回与默认参数",
+      "code": "def calc(x, step=2):\n    return x + step\n\na = calc(3)\nprint(a)\nprint(calc(a, 1))",
+      "answers": [
+        "5\n6"
+      ]
+    },
+    {
+      "id": "q10",
+      "number": 10,
+      "sectionId": "fill",
+      "type": "FILL",
+      "grading": "AUTO",
+      "score": 5,
+      "content": "补全代码，使程序读取一个整数并输出其平方。",
+      "code": "n = ________(input(\"整数：\"))\nprint(n ** 2)",
+      "answers": [
+        "int"
+      ]
+    },
+    {
+      "id": "q11",
+      "number": 11,
+      "sectionId": "fill",
+      "type": "CODE",
+      "grading": "MANUAL",
+      "score": 5,
+      "content": "补全 while 循环，使程序依次输出1、2、3后停止。",
+      "code": "i = 1\nwhile i <= 3:\n    print(i)\n    ____________________",
+      "referenceAnswer": "i += 1",
+      "rubric": "循环体中每次令 i 增加1，缩进正确。接受 i = i + 1 等等价写法。"
+    },
+    {
+      "id": "q12",
+      "number": 12,
+      "sectionId": "fill",
+      "type": "CODE",
+      "grading": "MANUAL",
+      "score": 5,
+      "content": "补全函数，使 larger(3, 5) 返回5，相等时返回任意一个参数。",
+      "code": "def larger(a, b):\n    if a >= b:\n        return a\n    ____________________",
+      "referenceAnswer": "return b",
+      "rubric": "if 分支之后返回 b；接受 else: return b 等正确结构。"
+    },
+    {
+      "id": "q13",
+      "number": 13,
+      "sectionId": "fill",
+      "type": "CODE",
+      "grading": "MANUAL",
+      "score": 5,
+      "content": "以下函数想返回1到n的和，但 sum_to(3) 得到1。指出错误并写出修正后的完整函数。约定n为正整数。\n请同时填写错误原因和修正后的完整函数。",
+      "code": "def sum_to(n):\n    total = 0\n    for i in range(1, n + 1):\n        total += i\n        return total",
+      "referenceAnswer": "错误原因：return 位于循环内部，第一次迭代就返回。\n\ndef sum_to(n):\n    total = 0\n    for i in range(1, n + 1):\n        total += i\n    return total",
+      "rubric": "指出 return 缩进错误2分；完整函数正确、循环外返回3分。"
+    },
+    {
+      "id": "q14",
+      "number": 14,
+      "sectionId": "program",
+      "type": "CODE",
+      "grading": "MANUAL",
+      "score": 20,
+      "content": "消费结算（建议12分钟）\n编写完整程序：输入两行，第一行为商品单价（非负小数），第二行为数量（正整数）。总价达到100元时打九折，否则按原价。输出实付金额，仅输出数值并保留两位小数。无需定义函数。\n示例输入：25.0（第一行）、4（第二行）　示例输出：90.00",
+      "referenceAnswer": "price = float(input())\nquantity = int(input())\ntotal = price * quantity\nif total >= 100:\n    total *= 0.9\nprint(f\"{total:.2f}\")",
+      "rubric": "正确读取单价和数量4分；计算总价4分；满100打九折（含边界）8分；仅输出数值且保留两位小数4分。接受等价实现。"
+    },
+    {
+      "id": "q15",
+      "number": 15,
+      "sectionId": "program",
+      "type": "CODE",
+      "grading": "MANUAL",
+      "score": 20,
+      "content": "正整数范围内的偶数和（建议16分钟）\n定义函数 sum_even(n)，用循环计算并返回1到n（包含n）的偶数之和。n为正整数，函数中不使用input或print。再编写调用代码：读取一个正整数n，调用函数并输出结果。要求使用循环，不使用求和公式。\n示例：输入6，输出12。输入1，输出0。",
+      "referenceAnswer": "def sum_even(n):\n    total = 0\n    for i in range(1, n + 1):\n        if i % 2 == 0:\n            total += i\n    return total\n\nn = int(input())\nprint(sum_even(n))",
+      "rubric": "函数签名和返回值4分；正确循环范围4分；筛选偶数并累加6分；读取、调用和输出4分；边界 n=1 正确2分。函数内部不得使用 input/print，不得使用求和公式。"
+    }
+  ],
+  "answerKeyNote": "原文件为学生卷；参考答案及人工评分建议根据题意整理，教师开考前可在预览中核对。自动判分45分，人工评分55分。"
+}

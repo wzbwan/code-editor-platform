@@ -45,6 +45,55 @@ model User {
   godotSessionBootstraps     GodotSessionBootstrap[]     @relation("UserGodotSessionBootstraps")
   classDefenseMonsterTypes   ClassDefenseMonsterType[]   @relation("TeacherClassDefenseMonsterTypes")
   pet                        StudentPet?
+  temporaryExams             TemporaryExam[]
+}
+
+// Anonymous, file-based exams are isolated from registered student exams.
+model TemporaryExam {
+  id              String   @id @default(cuid())
+  teacherId       String
+  teacher         User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title           String
+  paper           Json
+  status          String   @default("DRAFT")
+  startsAt        DateTime
+  endsAt          DateTime
+  createdAt       DateTime @default(now())
+  attempts        TemporaryExamAttempt[]
+
+  @@index([teacherId, createdAt])
+}
+
+model TemporaryExamAttempt {
+  id              String   @id @default(cuid())
+  examId          String
+  exam            TemporaryExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentNumber   String
+  studentName     String
+  answers         Json
+  grades          Json
+  tokenHash       String?
+  revision        Int      @default(0)
+  focusLostCount  Int      @default(0)
+  startedAt       DateTime @default(now())
+  deadline        DateTime
+  submittedAt     DateTime?
+  autoSubmitted   Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+  events          TemporaryExamEvent[]
+
+  @@unique([examId, studentNumber])
+  @@index([examId, submittedAt])
+}
+
+model TemporaryExamEvent {
+  id          String   @id @default(cuid())
+  attemptId   String
+  attempt     TemporaryExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  type        String
+  occurredAt  DateTime @default(now())
+
+  @@index([attemptId, occurredAt])
 }
 
 model LoginAttemptThrottle {

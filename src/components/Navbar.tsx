@@ -1,15 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 
 export default function Navbar() {
   const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
 
-  if (searchParams.get('embedded') === 'godot') {
+  if (searchParams.get('embedded') === 'godot' || pathname.startsWith('/exam/')) {
     return null
   }
 
@@ -21,11 +22,11 @@ export default function Navbar() {
 
   return (
     <nav className="bg-gray-800 text-white px-6 py-4">
-      <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold">
+      <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
+        <Link href="/" className="shrink-0 text-xl font-bold">
           Python代码平台
         </Link>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           {session ? (
             <>
               <span className="text-sm">
@@ -39,6 +40,7 @@ export default function Navbar() {
                   <Link href="/teacher/pets" className="hover:text-gray-300">班级宠物</Link>
                   <Link href="/teacher/training" className="hover:text-gray-300">训练场</Link>
                   <Link href="/teacher/exams" className="hover:text-gray-300">期末考试</Link>
+                  <Link href="/teacher/temporary-exams" className="hover:text-gray-300">临时考试</Link>
                   <Link href="/teacher/questions" className="hover:text-gray-300">试题管理</Link>
                   <Link href="/teacher/students" className="hover:text-gray-300">学生管理</Link>
                   <Link href="/teacher/submissions" className="hover:text-gray-300">批阅作业</Link>
